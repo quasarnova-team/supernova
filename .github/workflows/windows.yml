@@ -63,8 +63,10 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Install Python codegen deps
-        run: python -m pip install jinja2 lxml colorama pygit2
+      - name: Install Python codegen deps (+ astyle for generated-code formatting)
+        run: |
+          python -m pip install jinja2 lxml colorama pygit2
+          choco install astyle -y --no-progress
         shell: pwsh
       - name: Provision Boost (nuget vc141 1.67)
         run: |
