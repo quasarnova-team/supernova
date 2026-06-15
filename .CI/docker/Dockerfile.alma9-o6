@@ -1,10 +1,17 @@
-# Token-free open62541 CI image (AlmaLinux 9). Derived from
-# quasar-team/docker/quasar-uasdk/Dockerfile with the two `COPY sdk` (UASDK)
-# lines removed: the o6 backend builds against open62541-compat (open source),
-# so no commercial toolkit is needed. UaSwissArmyKnife (uasak_dump) is built
-# against open62541; NodeSetTools provides nodeset_compare.py.
-FROM cern/alma9-base
+# Token-free open62541 CI image (AlmaLinux 9), explicit multi-stage build.
+# uasak's open62541-compat is PINNED to v1.5.2 -- the newest tag BEFORE OPCUA-3408
+# (the UaNodeId string-format change in v1.5.3 that wraps ids in quotes), so the
+# uasak_dump NodeSet keeps bare NodeIds (DataType="i=NNN") matching the committed
+# reference NodeSets. No UASDK -> no CERN token required.
+FROM cern/alma9-base AS git-fetcher
+RUN dnf install -y git
+RUN git clone https://github.com/quasar-team/UaSwissArmyKnife.git -b v0.7
+RUN git clone https://github.com/pnikiel/PrepareEcosystem.git
+RUN git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git
+RUN git clone -b v1.5.2 https://github.com/quasar-team/open62541-compat.git
+RUN git clone https://github.com/quasar-team/NodeSetTools.git -b v0.0.5
 
+FROM cern/alma9-base
 LABEL org.opencontainers.image.source="https://github.com/parasxos/quasar"
 
 RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
@@ -15,7 +22,7 @@ RUN dnf install -y \
   python3-jinja2 \
   python3-lxml \
   python3-pip \
-  cmake3 \
+  cmake \
   gcc-c++ \
   boost-devel \
   graphviz \
@@ -29,7 +36,28 @@ RUN dnf install -y \
   && dnf clean all \
   && python3 -m pip install pygit2
 
-RUN git clone https://github.com/quasar-team/UaSwissArmyKnife.git -b v0.7 \
-  && cd UaSwissArmyKnife && bash build_linux_open62541.sh && cd build && make install
+COPY --from=git-fetcher /UaSwissArmyKnife /UaSwissArmyKnife
+COPY --from=git-fetcher /PrepareEcosystem /UaSwissArmyKnife/build/PrepareEcosystem
+COPY --from=git-fetcher /LogIt /UaSwissArmyKnife/build/work/LogIt
+COPY --from=git-fetcher /open62541-compat /UaSwissArmyKnife/build/work/open62541-compat
 
-RUN cd /opt && git clone https://github.com/quasar-team/NodeSetTools.git -b v0.0.5
+RUN cd /UaSwissArmyKnife/build/work/LogIt \
+  && mkdir build && cd build \
+  && cmake -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON \
+     -DCMAKE_INSTALL_PREFIX=/UaSwissArmyKnife/build/deploy/LogIt ../ \
+  && make && make install
+
+RUN cd /UaSwissArmyKnife/build/work/open62541-compat \
+  && mkdir build && cd build \
+  && cmake -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC \
+     -DOPEN62541-COMPAT_BUILD_CONFIG_FILE=boost_lcg.cmake \
+     -DLOGIT_INCLUDE_DIR=/UaSwissArmyKnife/build/deploy/LogIt/include \
+     -DLOGIT_EXT_LIB_DIR=/UaSwissArmyKnife/build/deploy/LogIt/lib \
+     -DCMAKE_INSTALL_PREFIX=/UaSwissArmyKnife/build/deploy/open62541-compat \
+     -DSKIP_TESTS=ON ../ \
+  && make && make install
+
+RUN cd /UaSwissArmyKnife/build \
+  && cmake ../ && make && make install
+
+COPY --from=git-fetcher /NodeSetTools /opt/NodeSetTools
