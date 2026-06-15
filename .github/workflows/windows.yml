@@ -1,13 +1,12 @@
 name: CI (Windows Server 2025)
 
-# Windows Server 2025 track. Two lanes:
-#   * framework-invariants-windows -- token-free, GREEN: hermetic Python codegen
-#     tests on windows-2025 (proves the code-generation layer is Windows-clean).
-#   * framework-cases-windows -- the o6 MSVC build. Token-free (open62541 +
-#     open-source deps, NO UASDK), same idea as the Linux o6 image: provision the
-#     Windows build deps, then build. Gated HAS_WINDOWS=true. open6_win_configuration.cmake
-#     drives it (nuget boost-vc141 1.67 layout + *_PATH_* env vars). First milestone:
-#     prepare_build (codegen + cmake configure); then the full compile/link.
+# Windows Server 2025 track (token-free; no UASDK/CERN token).
+#   * framework-invariants-windows -- GREEN: hermetic Python codegen tests.
+#   * framework-cases-windows -- o6 MSVC build. Provisions deps (nuget boost vc141
+#     1.67 / CodeSynthesis XSD / vcpkg openssl+libxml2+xerces-c) and builds with
+#     open6_win_configuration.cmake on VS2022. Gated HAS_WINDOWS=true. Once green
+#     this gets baked into the ws2025-o6 image (Linux-parallel) and a ws2025-uasdk
+#     image (o6 image + UASDK from a UASDK_URL secret) adds uasdk Windows coverage.
 
 on:
   push:
@@ -42,9 +41,6 @@ jobs:
           python .CI/test_no_unbound_delegate.py
         shell: pwsh
 
-  # o6 MSVC build (token-free). First-attempt provisioning + a toolchain probe so
-  # the run logs reveal real dep paths to refine. Stops at prepare_build (configure)
-  # for fast feedback before the full compile.
   framework-cases-windows:
     if: ${{ vars.HAS_WINDOWS == 'true' }}
     runs-on: windows-2025
@@ -54,14 +50,8 @@ jobs:
         case: [default_design]
         backend: [o6]
     env:
-      BOOST_PATH_HEADERS: C:\deps\boost\boost-vc141\lib\native\include
-      BOOST_PATH_LIBS: C:\deps\boost
-      CODE_SYNTHESYS_XSD_PATH_HEADERS: C:\deps\xsd\libxsd
-      XERCESC_PATH_HEADERS: C:\deps\xsd\include
-      XERCESC_PATH_LIBS: C:\deps\xsd\lib64
-      OPENSSL_PATH_HEADERS: C:\Program Files\OpenSSL\include
-      OPENSSL_PATH_LIBS: C:\Program Files\OpenSSL\lib
-      LIBXML2_PATH_LIBS: C:\vcpkg\installed\x64-windows\lib
+      QUASAR_CMAKE_GENERATOR: 'Visual Studio 17 2022'
+      QUASAR_CMAKE_GENERATOR_PLATFORM: x64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,37 +59,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Probe windows-2025 toolchain
-        run: |
-          python --version; cmake --version
-          Write-Host "VCPKG_INSTALLATION_ROOT=$env:VCPKG_INSTALLATION_ROOT"
-          Get-ChildItem 'C:\Program Files\OpenSSL*','C:\Program Files\OpenSSL-Win64' -ErrorAction SilentlyContinue | Select-Object FullName
-        shell: pwsh
       - name: Install Python codegen deps
         run: python -m pip install jinja2 lxml colorama pygit2
         shell: pwsh
       - name: Provision Boost (nuget vc141 1.67)
         run: |
-          New-Item -ItemType Directory -Force -Path C:\deps\boost | Out-Null
-          $pkgs = 'boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141'
-          foreach ($p in $pkgs) { nuget install $p -Version 1.67.0 -OutputDirectory C:\deps\boost -ExcludeVersion -NonInteractive }
+          New-Item -ItemType Directory -Force C:\deps\boost | Out-Null
+          $pkgs='boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141'
+          foreach($p in $pkgs){ nuget install $p -Version 1.67.0 -OutputDirectory C:\deps\boost -ExcludeVersion -NonInteractive }
+          "BOOST_PATH_HEADERS=C:\deps\boost\boost-vc141\lib\native\include" >> $env:GITHUB_ENV
+          "BOOST_PATH_LIBS=C:\deps\boost" >> $env:GITHUB_ENV
         shell: pwsh
-      - name: Provision CodeSynthesis XSD + Xerces-C
+      - name: Provision CodeSynthesis XSD (xsd.exe + libxsd)
         run: |
           Invoke-WebRequest "https://www.codesynthesis.com/download/xsd/4.0/windows/i686/xsd-4.0.0-i686-windows.zip" -OutFile xsd.zip
-          Expand-Archive xsd.zip -DestinationPath C:\deps -Force
-          $d = Get-ChildItem C:\deps -Directory -Filter 'xsd-4.0.0*' | Select-Object -First 1
-          if ($d) { Move-Item $d.FullName C:\deps\xsd -Force }
-          Get-ChildItem C:\deps\xsd -Recurse -Filter 'xsd.exe' | Select-Object FullName
-          Get-ChildItem C:\deps\xsd -Recurse -Directory -Filter 'libxsd' | Select-Object FullName
-          Get-ChildItem C:\deps\xsd -Recurse -Filter 'xerces-c*.lib' | Select-Object FullName
+          Expand-Archive xsd.zip C:\deps\xsd-dl -Force
+          $xsdexe=(Get-ChildItem C:\deps\xsd-dl -Recurse -Filter xsd.exe | Select-Object -First 1).FullName
+          $libxsd=(Get-ChildItem C:\deps\xsd-dl -Recurse -Directory -Filter libxsd | Select-Object -First 1).FullName
+          if(-not $xsdexe -or -not $libxsd){ throw "xsd.exe / libxsd not found in the XSD download" }
+          "CODE_SYNTHESYS_XSD_PATH_HEADERS=$libxsd" >> $env:GITHUB_ENV
+          (Split-Path $xsdexe) >> $env:GITHUB_PATH
+          Write-Host "xsd.exe=$xsdexe"; Write-Host "libxsd=$libxsd"
         shell: pwsh
-      - name: Provision libxml2 (vcpkg)
-        run: vcpkg install libxml2:x64-windows
+      - name: Provision OpenSSL / LibXml2 / Xerces-C (vcpkg, binary-cached)
+        run: |
+          vcpkg install openssl libxml2 xerces-c --triplet x64-windows
+          $vi="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          $xl=Get-ChildItem "$vi\lib" -Filter 'xerces-c*.lib' | Select-Object -First 1
+          if($xl){ Copy-Item $xl.FullName "$vi\lib\xerces-c_3.lib" -Force }
+          if(Test-Path "$vi\lib\libcrypto.lib"){ Copy-Item "$vi\lib\libcrypto.lib" "$vi\lib\openssl.lib" -Force }
+          "OPENSSL_PATH_HEADERS=$vi\include" >> $env:GITHUB_ENV
+          "OPENSSL_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
+          "XERCESC_PATH_HEADERS=$vi\include" >> $env:GITHUB_ENV
+          "XERCESC_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
+          "LIBXML2_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
         shell: pwsh
-      - name: Codegen + configure (prepare_build)
+      - name: Build o6 server (prepare_build + MSVC compile/link)
         run: |
           python quasar.py enable_module open62541-compat v1.5.7
           python quasar.py set_build_config open6_win_configuration.cmake
-          python quasar.py prepare_build Release
+          python quasar.py build Release
         shell: pwsh

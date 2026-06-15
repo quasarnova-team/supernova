@@ -91,7 +91,7 @@ if(NOT TARGET libboostlogsetup)
 	set_property(TARGET libboostlogsetup PROPERTY IMPORTED_LOCATION ${BOOST_PATH_LIBS}/boost_log_setup-vc141/lib/native/libboost_log_setup-vc141-mt-x64-1_67.lib)
 endif()
 
-set( BOOST_LIBS  libboostlogsetup libboostlog libboostsystem libboostfilesystem libboostthread libboostprogramoptions libboostchrono libboostdatetime -lrt)
+set( BOOST_LIBS  libboostlogsetup libboostlog libboostsystem libboostfilesystem libboostthread libboostprogramoptions libboostchrono libboostdatetime )
 
 #-----
 # LogIt
@@ -174,8 +174,8 @@ include_directories( ${PROJECT_SOURCE_DIR}/GoogleTest/gtest/src/gtest/include )
 add_definitions( -DBACKEND_OPEN62541 )
 SET( OPCUA_TOOLKIT_PATH "" )
 include_directories(${PROJECT_BINARY_DIR}/open62541-compat/extern/open62541/include )
-SET( OPCUA_TOOLKIT_LIBS_RELEASE -lrt )
-SET( OPCUA_TOOLKIT_LIBS_DEBUG   -lrt )
+SET( OPCUA_TOOLKIT_LIBS_RELEASE "" )
+SET( OPCUA_TOOLKIT_LIBS_DEBUG   "" )
 
 #------
 #General
@@ -188,4 +188,4 @@ set(CMAKE_CXX_FLAGS_DEBUG "/MDd /Zi")
 SET( CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG bin/)
 SET( CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE bin/)
 
-SET (CMAKE_EXE_LINKER_FLAGS -v)
+# (removed gcc/clang '-v' linker flag -- invalid for the MSVC linker)
