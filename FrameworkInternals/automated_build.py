@@ -103,10 +103,11 @@ def automatedBuild(context, *args):
 
     print("Calling build, type [{0}], builder [{1}]".format(buildType, builder))
     if platform.system() == "Windows":
-        try:
-            subprocessWithImprovedErrors( "cmake --build . --target ALL_BUILD --config "+buildType, 'visual studio build')
-        except Exception as e:
-            print("Build process error. Exception: [" + str(e) + "]")
+        num_cpus = multiprocessing.cpu_count()
+        # Generator-agnostic: no '--target ALL_BUILD' (that is a Visual Studio
+        # generator target; Ninja's default target is 'all'). Failures now
+        # propagate -- the previous try/except swallowed build errors (false green).
+        subprocessWithImprovedErrors([getCommand("cmake"), "--build", ".", "--config", buildType, "--parallel", str(num_cpus)], "cmake --build")
     elif platform.system() == "Linux":
         num_cpus = multiprocessing.cpu_count()
         subprocessWithImprovedErrors([getCommand("cmake"), "--build", ".", "--config", builder, "--", "-j", str(num_cpus)], "cmake --build")
