@@ -1,0 +1,34 @@
+# Token-gated UASDK CI image = the token-free o6 image (build deps + the bare
+# open62541-1.2.2 uasak dump tool + NodeSetTools) PLUS the Unified Automation
+# C++ SDK installed at /opt/uasdk, which uasdk-eval.cmake points at for building
+# the UASDK-backed quasar server. The dump tool stays the o6 uasak: it is an
+# OPC UA *client*, backend-agnostic, and its bare-NodeId output matches the
+# reference NodeSets for both backends.
+#
+# NEEDS the CERN ICS_REPO_DEPS_TOKEN (deps repo) and validation when the token is
+# available -- the UASDK CMake flags below mirror images/alma-10/build-uasdk.sh
+# but target the o6 image's system OpenSSL/libxml2 rather than custom *_HOME.
+ARG OWNER=parasxos
+ARG OS_TAG=alma9
+FROM ghcr.io/${OWNER}/quasar-ci:${OS_TAG}-o6
+
+ARG UASDK_VERSION=1.7.9
+ARG ICS_REPO_DEPS_TOKEN
+RUN test -n "$ICS_REPO_DEPS_TOKEN" || { echo "ICS_REPO_DEPS_TOKEN build-arg required for the UASDK image"; exit 1; }
+RUN dnf install -y unzip || true
+RUN set -eux; \
+    ver="${UASDK_VERSION}"; \
+    case "$ver" in 2.0.2) full="2.0.2-675";; *) full="$ver";; esac; \
+    url="https://ics-deps-repo.web.cern.ch/quasar/uasdk/${full}/uasdkcppbundle-src-linux-v${full}.zip"; \
+    mkdir -p /tmp/u; \
+    curl -fsSL -H "PRIVATE-TOKEN: ${ICS_REPO_DEPS_TOKEN}" "$url" -o /tmp/u/uasdk.zip; \
+    unzip -q /tmp/u/uasdk.zip -d /tmp/u/src; \
+    root="$(find /tmp/u/src -name CMakeLists.txt -printf '%d:%h\n' | sort -n | head -1 | cut -d: -f2-)"; \
+    cmake -S "$root" -B /tmp/u/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF -DUASTACK_CLIENTAPI_ENABLED=ON \
+      -DBUILD_UACLIENTCPP=ON -DUASDK_WITH_CRYPTO=ON -DUASDK_WITH_XMLPARSER=ON \
+      -DOPENSSL_USE_STATIC_LIBS=TRUE -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+      -DCMAKE_INSTALL_PREFIX=/opt/uasdk; \
+    cmake --build /tmp/u/build --parallel "$(nproc)"; \
+    cmake --install /tmp/u/build; \
+    rm -rf /tmp/u

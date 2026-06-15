@@ -5,7 +5,13 @@ on:
     branches: [master, ci-matrix-reshape]
   pull_request:
     branches: [master]
+  schedule:
+    - cron: '0 3 * * *'   # nightly: full cube (all tiers x all toolkit versions)
   workflow_dispatch:
+    inputs:
+      tiers:
+        description: 'Comma-separated tiers to run (pr,nightly)'
+        default: 'pr,nightly'
 
 permissions:
   contents: read
@@ -25,9 +31,12 @@ jobs:
       - uses: actions/checkout@v4
       - id: gen
         env:
+          # push/PR -> fast PR tier; nightly schedule -> full cube; dispatch -> chosen tiers.
+          # QUASAR_CI_BACKENDS (repo var) filters backends -- set to "o6" on this fork
+          # until the token-gated uasdk images are published.
           QUASAR_CI_BACKENDS: ${{ vars.QUASAR_CI_BACKENDS }}
           QUASAR_CI_OS: ${{ vars.QUASAR_CI_OS }}
-          QUASAR_CI_TIERS: ${{ vars.QUASAR_CI_TIERS }}
+          QUASAR_CI_TIERS: ${{ github.event_name == 'schedule' && 'pr,nightly' || github.event_name == 'workflow_dispatch' && inputs.tiers || 'pr' }}
         run: |
           echo "matrix=$(.CI/expand_matrix.py)" >> "$GITHUB_OUTPUT"
           .CI/expand_matrix.py --print

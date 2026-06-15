@@ -8,6 +8,14 @@
     "uasdk": {}
   },
 
+  "toolkits": {
+    "uasdk": [
+      { "version": "1.7.9", "tier": "pr" },
+      { "version": "1.6.5", "tier": "nightly" },
+      { "version": "2.0.2", "tier": "nightly" }
+    ]
+  },
+
   "cases": [
     {
       "name": "default_design",
@@ -17,7 +25,7 @@
       "extra_cells": [
         { "backend": "o6",    "os": "alma10" },
         { "backend": "uasdk", "os": "alma10" },
-        { "backend": "o6",    "os": "alma10", "compiler": "clang" }
+        { "backend": "o6",    "os": "alma10", "compiler": "clang", "tier": "nightly" }
       ]
     },
     {

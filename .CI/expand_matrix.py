@@ -70,21 +70,29 @@ def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier):
 
 
 def expand(manifest):
-    """Flatten cases x (backends on the default os + any extra_cells)."""
+    """Flatten cases x backends x (uasdk toolkit versions) x os/compiler, with tiers.
+
+    A backend listed in manifest['toolkits'] (uasdk) fans out into one cell per
+    toolkit version, each carrying that version's tier; a backend without toolkit
+    entries (o6) yields a single cell at the cell's base tier."""
     default_os = manifest.get('default_os', 'alma9')
+    toolkits = manifest.get('toolkits', {})
+
+    def emit(case, backend, os_name, compiler, base_tier):
+        versions = toolkits.get(backend)
+        if versions:
+            return [_cell(manifest, case, backend, os_name, compiler,
+                          tk['version'], tk.get('tier', base_tier)) for tk in versions]
+        return [_cell(manifest, case, backend, os_name, compiler, None, base_tier)]
+
     cells = []
     for case in manifest['cases']:
-        tier = case.get('tier', 'pr')
+        case_tier = case.get('tier', 'pr')
         for backend in case.get('backends', []):
-            cells.append(_cell(manifest, case, backend, default_os, 'gcc',
-                               case.get('toolkit_version'), tier))
+            cells += emit(case, backend, default_os, 'gcc', case_tier)
         for extra in case.get('extra_cells', []):
-            cells.append(_cell(manifest, case,
-                               extra['backend'],
-                               extra.get('os', default_os),
-                               extra.get('compiler', 'gcc'),
-                               extra.get('toolkit_version', case.get('toolkit_version')),
-                               extra.get('tier', tier)))
+            cells += emit(case, extra['backend'], extra.get('os', default_os),
+                          extra.get('compiler', 'gcc'), extra.get('tier', case_tier))
     return cells
 
 
