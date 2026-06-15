@@ -1,14 +1,16 @@
 # Token-free open62541 CI image (AlmaLinux 9), explicit multi-stage build.
-# uasak's open62541-compat is PINNED to v1.5.2 -- the newest tag BEFORE OPCUA-3408
-# (the UaNodeId string-format change in v1.5.3 that wraps ids in quotes), so the
-# uasak_dump NodeSet keeps bare NodeIds (DataType="i=NNN") matching the committed
-# reference NodeSets. No UASDK -> no CERN token required.
+# uasak's open62541-compat is PINNED to v1.4.7, which embeds open62541 v1.2.2.
+# open62541's UA_print serializes NodeIds bare (DataType="i=NNN") in 1.2.2, but
+# quoted (DataType="&quot;i=NNN&quot;") since the v1.5.4 re-amalgamation in
+# compat v1.5.0+. An old-o6 uasak therefore keeps uasak_dump matching the
+# committed (bare) reference NodeSets -- the same behaviour as quasar-team's
+# long-standing CI image. No UASDK -> no CERN token required.
 FROM cern/alma9-base AS git-fetcher
 RUN dnf install -y git
 RUN git clone https://github.com/quasar-team/UaSwissArmyKnife.git -b v0.7
 RUN git clone https://github.com/pnikiel/PrepareEcosystem.git
 RUN git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git
-RUN git clone -b v1.5.2 https://github.com/quasar-team/open62541-compat.git
+RUN git clone -b v1.4.7 https://github.com/quasar-team/open62541-compat.git
 RUN git clone https://github.com/quasar-team/NodeSetTools.git -b v0.0.5
 
 FROM cern/alma9-base
