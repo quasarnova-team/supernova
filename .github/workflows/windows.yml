@@ -68,12 +68,17 @@ jobs:
           python -m pip install jinja2 lxml colorama pygit2
           choco install astyle -y --no-progress
         shell: pwsh
-      - name: Provision Boost (nuget vc141 1.67)
+      - name: Provision Boost (nuget vc141 1.67 libs + full headers)
         run: |
           New-Item -ItemType Directory -Force C:\deps\boost | Out-Null
-          $pkgs='boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141'
+          $pkgs='boost','boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141'
           foreach($p in $pkgs){ nuget install $p -Version 1.67.0 -OutputDirectory C:\deps\boost -ExcludeVersion -NonInteractive }
-          "BOOST_PATH_HEADERS=C:\deps\boost\boost-vc141\lib\native\include" >> $env:GITHUB_ENV
+          # discover the real Boost include root (the dir containing boost\xpressive\xpressive.hpp)
+          $xp = Get-ChildItem C:\deps\boost -Recurse -Filter 'xpressive.hpp' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like '*\boost\xpressive\xpressive.hpp' } | Select-Object -First 1
+          if (-not $xp) { throw "boost/xpressive/xpressive.hpp not found under C:\deps\boost (incomplete Boost headers)" }
+          $boostInc = Split-Path (Split-Path (Split-Path $xp.FullName))
+          Write-Host "Boost include root: $boostInc"
+          "BOOST_PATH_HEADERS=$boostInc" >> $env:GITHUB_ENV
           "BOOST_PATH_LIBS=C:\deps\boost" >> $env:GITHUB_ENV
         shell: pwsh
       - name: Provision CodeSynthesis XSD (xsd.exe + libxsd)
