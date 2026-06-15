@@ -50,6 +50,8 @@ jobs:
         backend: [o6]
     env:
       QUASAR_CMAKE_GENERATOR: Ninja
+      # vcpkg toolchain so find_package(XercesC/LibXml2/OpenSSL) finds the vcpkg deps
+      CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,13 +84,17 @@ jobs:
           (Split-Path $xsdexe) >> $env:GITHUB_PATH
           Write-Host "xsd.exe=$xsdexe"; Write-Host "libxsd=$libxsd"
         shell: pwsh
-      # Cache the built vcpkg deps so they build once (~30 min) then restore fast.
-      - name: Cache vcpkg deps
-        uses: actions/cache@v4
+      # Cache the built vcpkg deps. Split restore/save so the cache is written
+      # right after vcpkg (before the build step that may still fail) -- the
+      # combined cache action skips saving on a failed job, which is why earlier
+      # runs kept rebuilding for ~30 min.
+      - name: Restore vcpkg deps cache
+        id: vcpkgcache
+        uses: actions/cache/restore@v4
         with:
           path: C:\vcpkg\installed
-          key: vcpkg-x64-windows-openssl-libxml2-xerces-v1
-      - name: Provision OpenSSL / LibXml2 / Xerces-C (vcpkg, cached)
+          key: vcpkg-x64-windows-openssl-libxml2-xerces-v2
+      - name: Provision OpenSSL / LibXml2 / Xerces-C (vcpkg)
         run: |
           vcpkg install openssl libxml2 xerces-c --triplet x64-windows
           Write-Host "vcpkg exit code: $LASTEXITCODE"
@@ -106,6 +112,12 @@ jobs:
           "LIBXML2_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
           exit 0
         shell: pwsh
+      - name: Save vcpkg deps cache
+        if: steps.vcpkgcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-x64-windows-openssl-libxml2-xerces-v2
       - name: Build o6 server (prepare_build + MSVC compile/link)
         run: |
           python quasar.py enable_module open62541-compat v1.5.7
