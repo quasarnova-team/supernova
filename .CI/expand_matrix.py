@@ -7,11 +7,20 @@ case is declared exactly once. Emits {"include": [ ...cells... ]} on stdout, for
 
     matrix: ${{ fromJSON(needs.matrix.outputs.include) }}
 
+A cell is (case x backend x os x compiler). Its CI image is
+    ghcr.io/<owner>/quasar-ci:<os>-<backend>[-<toolkit_version>]
+computed here as the `image` field (the workflow prepends ghcr.io/<owner>/...).
+
+Filters (compose; also read from env so the workflow can pass them as vars):
+    --backends o6,uasdk     QUASAR_CI_BACKENDS   restrict to these backends
+    --os alma9,alma10       QUASAR_CI_OS         restrict to these operating systems
+    --tier pr,nightly       QUASAR_CI_TIERS      restrict to these tiers (default tier: pr)
+
 Modes:
-  (default)         emit the matrix JSON on one line (for $GITHUB_OUTPUT)
-  --print           human-readable cell list grouped by case + total
-  --assert-count N  exit non-zero unless exactly N cells expand (migration guard)
-  --check-paths     verify every design/config/oracle/device_sources path exists
+    (default)         emit the matrix JSON on one line (for $GITHUB_OUTPUT)
+    --print           human-readable cell list grouped by case + total
+    --assert-count N  exit non-zero unless exactly N cells expand (migration guard)
+    --check-paths     verify every design/config/oracle/device_sources path exists
 
 Stdlib only (json) so it runs in any CI image without extra packages.
 """
@@ -33,15 +42,27 @@ def load():
         return json.load(handle)
 
 
-def _cell(manifest, case, backend, image_key, compiler):
+def _image(os_name, backend, toolkit_version):
+    """ghcr.io/<owner>/quasar-ci:<image>. o6 needs no toolkit; uasdk pins a version."""
+    if backend == 'uasdk' and toolkit_version:
+        return '{}-{}-{}'.format(os_name, backend, toolkit_version)
+    return '{}-{}'.format(os_name, backend)
+
+
+def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier):
     name = case['name']
-    label = '-'.join([name, backend, image_key] + ([compiler] if compiler != 'gcc' else []))
+    parts = [name, backend, os_name] + ([compiler] if compiler != 'gcc' else [])
+    if toolkit_version:
+        parts.append(toolkit_version)
     return {
-        'label': label,
+        'label': '-'.join(parts),
         'case': name,
         'backend': backend,
-        'image_tag': manifest['images'][image_key],
+        'os': os_name,
         'compiler': compiler,
+        'toolkit_version': toolkit_version or '',
+        'tier': tier,
+        'image': _image(os_name, backend, toolkit_version),
         'cc': _CC[compiler],
         'cxx': _CXX[compiler],
         'compat_branch': manifest['backends'].get(backend, {}).get('compat_branch', ''),
@@ -49,15 +70,38 @@ def _cell(manifest, case, backend, image_key, compiler):
 
 
 def expand(manifest):
-    """Flatten cases x (backends on the default image + any extra_cells)."""
+    """Flatten cases x (backends on the default os + any extra_cells)."""
+    default_os = manifest.get('default_os', 'alma9')
     cells = []
     for case in manifest['cases']:
+        tier = case.get('tier', 'pr')
         for backend in case.get('backends', []):
-            cells.append(_cell(manifest, case, backend, 'default', 'gcc'))
+            cells.append(_cell(manifest, case, backend, default_os, 'gcc',
+                               case.get('toolkit_version'), tier))
         for extra in case.get('extra_cells', []):
-            cells.append(_cell(manifest, case, extra['backend'],
-                               extra.get('image', 'default'),
-                               extra.get('compiler', 'gcc')))
+            cells.append(_cell(manifest, case,
+                               extra['backend'],
+                               extra.get('os', default_os),
+                               extra.get('compiler', 'gcc'),
+                               extra.get('toolkit_version', case.get('toolkit_version')),
+                               extra.get('tier', tier)))
+    return cells
+
+
+def _csv_env(cli_value, env_name):
+    raw = cli_value if cli_value is not None else os.environ.get(env_name)
+    if not raw:
+        return None
+    return {item.strip() for item in raw.split(',') if item.strip()}
+
+
+def apply_filters(cells, backends, oses, tiers):
+    if backends:
+        cells = [c for c in cells if c['backend'] in backends]
+    if oses:
+        cells = [c for c in cells if c['os'] in oses]
+    if tiers:
+        cells = [c for c in cells if c['tier'] in tiers]
     return cells
 
 
@@ -79,10 +123,12 @@ def main():
     parser.add_argument('--print', action='store_true', dest='do_print')
     parser.add_argument('--assert-count', type=int)
     parser.add_argument('--check-paths', action='store_true')
+    parser.add_argument('--backends')
+    parser.add_argument('--os', dest='oses')
+    parser.add_argument('--tier', dest='tiers')
     args = parser.parse_args()
 
     manifest = load()
-    cells = expand(manifest)
 
     if args.check_paths:
         missing = check_paths(manifest)
@@ -93,6 +139,13 @@ def main():
             sys.exit(1)
         print('paths OK ({} cases)'.format(len(manifest['cases'])))
         return
+
+    cells = apply_filters(
+        expand(manifest),
+        _csv_env(args.backends, 'QUASAR_CI_BACKENDS'),
+        _csv_env(args.oses, 'QUASAR_CI_OS'),
+        _csv_env(args.tiers, 'QUASAR_CI_TIERS'),
+    )
 
     if args.assert_count is not None and len(cells) != args.assert_count:
         print('cell count {} != expected {}'.format(len(cells), args.assert_count), file=sys.stderr)

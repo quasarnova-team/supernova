@@ -1,7 +1,7 @@
 {
-  "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices), its 'kind' (oracle|smoke) which decides how a result is judged, and which backends/cells it runs on. .CI/expand_matrix.py turns this into the GitHub Actions job matrix; run_test_case.py --case reads the same file, so a case is declared exactly once. This revision reproduces the pre-reshape coverage exactly (asymmetric per backend); backend symmetry, PR/nightly tiers and the UASDK-version axis are added in later commits.",
+  "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices) and its 'kind' (oracle|smoke), which decides how a result is judged. Cells are (case x backend x os x compiler); .CI/expand_matrix.py flattens them into a GitHub Actions strategy.matrix, and run_test_case.py --case reads the SAME file so a case is declared exactly once. The CI image of a cell is ghcr.io/<owner>/quasar-ci:<os>-<backend>[-<toolkit_version>]. This revision reproduces the pre-reshape coverage exactly (asymmetric per backend, 22 cells); backend symmetry, PR/nightly tiers and the UASDK-version axis are layered on in later commits.",
 
-  "images": { "default": "latest", "alma10": "alma10" },
+  "default_os": "alma9",
 
   "backends": {
     "o6":    { "compat_branch": "v1.5.7" },
@@ -15,9 +15,9 @@
       "oracle": "test_default_quasar_design/reference_ns2.xml",
       "backends": ["o6", "uasdk"],
       "extra_cells": [
-        { "backend": "o6",    "image": "alma10" },
-        { "backend": "uasdk", "image": "alma10" },
-        { "backend": "o6",    "image": "alma10", "compiler": "clang" }
+        { "backend": "o6",    "os": "alma10" },
+        { "backend": "uasdk", "os": "alma10" },
+        { "backend": "o6",    "os": "alma10", "compiler": "clang" }
       ]
     },
     {
