@@ -1,32 +1,23 @@
 name: CI (Windows Server 2025)
 
-# Windows Server 2025 track of the cube. Kept as its own workflow (like
-# open62541-compat/windows.yml) because Windows cells run NATIVELY on a
-# windows-2025 runner (no Linux container), unlike the Linux matrix in ci.yml.
-#
-# GATED OFF by default (manual dispatch + `if: vars.HAS_WINDOWS == 'true'`) so it
-# never auto-runs while the bring-up is validated. To enable:
-#   1. set repo variable HAS_WINDOWS=true
-#   2. (uasdk only) add secret ICS_REPO_DEPS_TOKEN + variable HAS_ICS_TOKEN=true
-#
-# STATUS / BRING-UP NOTES (needs validation on a real windows-2025 runner):
-#   * Deps (Boost / OpenSSL / Xerces-C / XSD / libxml2) are produced by the
-#     quasar-team/images `w2025` PowerShell scripts (Build-*.ps1). The robust
-#     pattern is to build them ONCE into a cached bundle and restore it here
-#     (per-run source builds of OpenSSL/Boost are far too slow on a hosted
-#     runner). UASDK (uasdk builds) needs the CERN token; o6 is token-free.
-#   * quasar is Windows-aware (CMakeLists `if(WIN32 AND MSVC)`,
-#     cmake/FindOpcUaToolkit.cmake, open6_win_configuration.cmake) and the
-#     driver/fixture are now cross-platform (python invocation, OpcUaServer.exe).
-#   * uasak_dump + NodeSetTools must be available on Windows for oracle cases;
-#     point QUASAR_NODESETTOOLS at the NodeSetTools checkout. Smoke cases
-#     (build + run) need neither and are the first thing to green.
+# Windows Server 2025 track. Two lanes:
+#   * framework-invariants-windows  -- RUNS NOW, token-free: the hermetic Python
+#     codegen invariants on a real windows-2025 runner. Proves quasar's code
+#     generation layer is Windows-clean (no POSIX-only path/IO assumptions).
+#   * framework-cases-windows       -- GATED bring-up: full MSVC build of the o6
+#     server. Needs the Windows dependency stack (Boost/OpenSSL/Xerces/XSD/
+#     libxml2 from the quasar-team/images w2025 scripts) and is enabled with
+#     repo var HAS_WINDOWS=true. uasdk on Windows additionally needs the CERN
+#     ICS_REPO_DEPS_TOKEN (commercial toolkit). open6_win_configuration.cmake is
+#     the o6 Windows build config (nuget boost-vc141 1.67 layout + *_PATH_* env).
 
 on:
+  push:
+    branches: [master, ci-matrix-reshape]
   workflow_dispatch:
     inputs:
       backends:
-        description: 'Comma-separated backends (o6 is token-free; uasdk needs the CERN token)'
+        description: 'Backends for the gated build lane (o6 token-free; uasdk needs the token)'
         default: 'o6'
 
 permissions:
@@ -34,6 +25,32 @@ permissions:
   packages: read
 
 jobs:
+
+  # Token-free: the Python codegen / framework-invariant tests on Windows.
+  framework-invariants-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Python + tooling deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install jinja2 lxml colorama pygit2
+          choco install astyle -y --no-progress
+        shell: pwsh
+      - name: Codegen idempotency / upgrade / unbound-delegate invariants
+        run: |
+          python .CI/test_upgrade_override.py
+          python .CI/test_no_spurious_rebuild.py
+          python .CI/test_no_unbound_delegate.py
+        shell: pwsh
+
+  # Gated bring-up: full MSVC build of the o6 server (needs the Windows dep
+  # bundle). Off until HAS_WINDOWS=true; o6 is token-free, uasdk needs the token.
   framework-cases-windows:
     if: ${{ vars.HAS_WINDOWS == 'true' }}
     runs-on: windows-2025
@@ -43,27 +60,18 @@ jobs:
         case: [default_design, methods]
         backend: [o6]
     env:
-      BOOST_ROOT: C:\quasar-deps\boost
-      XERCES_C_HOME: C:\quasar-deps\xerces-c
-      XSD_HOME: C:\quasar-deps\xsd
-      LIBXML2_HOME: C:\quasar-deps\libxml2
-      LIBSSL_HOME: C:\quasar-deps\libssl
-      UNIFIED_AUTOMATION_HOME: C:\quasar-deps\unified-automation
       QUASAR_NODESETTOOLS: C:\quasar-deps\NodeSetTools
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      # VALIDATE: restore the prebuilt Windows dependency bundle produced by the
-      # images/w2025 scripts (cache or release asset), populating C:\quasar-deps.
-      # Placeholder until the bundle exists; the job is gated off meanwhile.
+      # VALIDATE: restore the prebuilt w2025 dependency bundle into C:\quasar-deps
+      # and export the *_PATH_HEADERS/_LIBS env vars open6_win_configuration.cmake
+      # expects (BOOST_PATH_*, CODE_SYNTHESYS_XSD_PATH_HEADERS, OPENSSL_PATH_*,
+      # XERCESC_PATH_*, LIBXML2_PATH_LIBS). Placeholder while the bundle is built.
       - name: Provision Windows dependencies (bundle restore)
-        run: |
-          Write-Host "TODO: restore the w2025 dependency bundle into C:\quasar-deps"
-          Write-Host "  (Boost / OpenSSL / Xerces-C / XSD / libxml2 [+ UASDK when HAS_ICS_TOKEN])"
+        run: Write-Host "TODO: restore w2025 dep bundle + export *_PATH_* env vars"
         shell: pwsh
-
       - name: Build + evaluate case (cross-platform driver)
         run: python .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
         shell: pwsh
