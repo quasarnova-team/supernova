@@ -24,9 +24,19 @@ add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/Configuration/Configuration.xsd
 	DEPENDS ${DESIGN_FILE} templates/designToConfigurationXSD.jinja validateDesign ${PROJECT_SOURCE_DIR}/quasar.py ${QUASAR_TRANSFORM_SENSITIVE_FILES}
 	)
 
+# CodeSynthesis XSD binary: 'xsd' on Windows, 'xsdcxx' on Debian/CERN (renamed
+# there to avoid the Mono 'xsd' clash). Overridable via -DXSD_CXX_COMMAND.
+if(NOT DEFINED XSD_CXX_COMMAND)
+	if(WIN32)
+		set(XSD_CXX_COMMAND xsd)
+	else()
+		set(XSD_CXX_COMMAND xsdcxx)
+	endif()
+endif()
+
 add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/Configuration/Configuration.cxx ${PROJECT_BINARY_DIR}/Configuration/Configuration.hxx
 	WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Configuration
-	COMMAND xsdcxx cxx-tree --std c++11 --ordered-type-all --generate-serialization --namespace-map http://cern.ch/quasar/Configuration=Configuration --output-dir ${PROJECT_BINARY_DIR}/Configuration ${PROJECT_BINARY_DIR}/Configuration/Configuration.xsd
+	COMMAND ${XSD_CXX_COMMAND} cxx-tree --std c++11 --ordered-type-all --generate-serialization --namespace-map http://cern.ch/quasar/Configuration=Configuration --output-dir ${PROJECT_BINARY_DIR}/Configuration ${PROJECT_BINARY_DIR}/Configuration/Configuration.xsd
 	DEPENDS ${PROJECT_BINARY_DIR}/Configuration/Configuration.xsd
 )
 
