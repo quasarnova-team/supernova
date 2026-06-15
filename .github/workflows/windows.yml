@@ -1,24 +1,18 @@
 name: CI (Windows Server 2025)
 
 # Windows Server 2025 track. Two lanes:
-#   * framework-invariants-windows  -- RUNS NOW, token-free: the hermetic Python
-#     codegen invariants on a real windows-2025 runner. Proves quasar's code
-#     generation layer is Windows-clean (no POSIX-only path/IO assumptions).
-#   * framework-cases-windows       -- GATED bring-up: full MSVC build of the o6
-#     server. Needs the Windows dependency stack (Boost/OpenSSL/Xerces/XSD/
-#     libxml2 from the quasar-team/images w2025 scripts) and is enabled with
-#     repo var HAS_WINDOWS=true. uasdk on Windows additionally needs the CERN
-#     ICS_REPO_DEPS_TOKEN (commercial toolkit). open6_win_configuration.cmake is
-#     the o6 Windows build config (nuget boost-vc141 1.67 layout + *_PATH_* env).
+#   * framework-invariants-windows -- token-free, GREEN: hermetic Python codegen
+#     tests on windows-2025 (proves the code-generation layer is Windows-clean).
+#   * framework-cases-windows -- the o6 MSVC build. Token-free (open62541 +
+#     open-source deps, NO UASDK), same idea as the Linux o6 image: provision the
+#     Windows build deps, then build. Gated HAS_WINDOWS=true. open6_win_configuration.cmake
+#     drives it (nuget boost-vc141 1.67 layout + *_PATH_* env vars). First milestone:
+#     prepare_build (codegen + cmake configure); then the full compile/link.
 
 on:
   push:
     branches: [master, ci-matrix-reshape]
   workflow_dispatch:
-    inputs:
-      backends:
-        description: 'Backends for the gated build lane (o6 token-free; uasdk needs the token)'
-        default: 'o6'
 
 permissions:
   contents: read
@@ -26,7 +20,6 @@ permissions:
 
 jobs:
 
-  # Token-free: the Python codegen / framework-invariant tests on Windows.
   framework-invariants-windows:
     runs-on: windows-2025
     steps:
@@ -49,30 +42,64 @@ jobs:
           python .CI/test_no_unbound_delegate.py
         shell: pwsh
 
-  # Gated bring-up: full MSVC build of the o6 server (needs the Windows dep
-  # bundle). Off until HAS_WINDOWS=true; o6 is token-free, uasdk needs the token.
+  # o6 MSVC build (token-free). First-attempt provisioning + a toolchain probe so
+  # the run logs reveal real dep paths to refine. Stops at prepare_build (configure)
+  # for fast feedback before the full compile.
   framework-cases-windows:
     if: ${{ vars.HAS_WINDOWS == 'true' }}
     runs-on: windows-2025
     strategy:
       fail-fast: false
       matrix:
-        case: [default_design, methods]
+        case: [default_design]
         backend: [o6]
     env:
-      QUASAR_NODESETTOOLS: C:\quasar-deps\NodeSetTools
+      BOOST_PATH_HEADERS: C:\deps\boost\boost-vc141\lib\native\include
+      BOOST_PATH_LIBS: C:\deps\boost
+      CODE_SYNTHESYS_XSD_PATH_HEADERS: C:\deps\xsd\libxsd
+      XERCESC_PATH_HEADERS: C:\deps\xsd\include
+      XERCESC_PATH_LIBS: C:\deps\xsd\lib64
+      OPENSSL_PATH_HEADERS: C:\Program Files\OpenSSL\include
+      OPENSSL_PATH_LIBS: C:\Program Files\OpenSSL\lib
+      LIBXML2_PATH_LIBS: C:\vcpkg\installed\x64-windows\lib
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      # VALIDATE: restore the prebuilt w2025 dependency bundle into C:\quasar-deps
-      # and export the *_PATH_HEADERS/_LIBS env vars open6_win_configuration.cmake
-      # expects (BOOST_PATH_*, CODE_SYNTHESYS_XSD_PATH_HEADERS, OPENSSL_PATH_*,
-      # XERCESC_PATH_*, LIBXML2_PATH_LIBS). Placeholder while the bundle is built.
-      - name: Provision Windows dependencies (bundle restore)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Probe windows-2025 toolchain
         run: |
-          Write-Host "TODO: restore w2025 dep bundle and export the *_PATH_* env vars"
+          python --version; cmake --version
+          Write-Host "VCPKG_INSTALLATION_ROOT=$env:VCPKG_INSTALLATION_ROOT"
+          Get-ChildItem 'C:\Program Files\OpenSSL*','C:\Program Files\OpenSSL-Win64' -ErrorAction SilentlyContinue | Select-Object FullName
         shell: pwsh
-      - name: Build + evaluate case (cross-platform driver)
-        run: python .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
+      - name: Install Python codegen deps
+        run: python -m pip install jinja2 lxml colorama pygit2
+        shell: pwsh
+      - name: Provision Boost (nuget vc141 1.67)
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\deps\boost | Out-Null
+          $pkgs = 'boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141'
+          foreach ($p in $pkgs) { nuget install $p -Version 1.67.0 -OutputDirectory C:\deps\boost -ExcludeVersion -NonInteractive }
+        shell: pwsh
+      - name: Provision CodeSynthesis XSD + Xerces-C
+        run: |
+          Invoke-WebRequest "https://www.codesynthesis.com/download/xsd/4.0/windows/i686/xsd-4.0.0-i686-windows.zip" -OutFile xsd.zip
+          Expand-Archive xsd.zip -DestinationPath C:\deps -Force
+          $d = Get-ChildItem C:\deps -Directory -Filter 'xsd-4.0.0*' | Select-Object -First 1
+          if ($d) { Move-Item $d.FullName C:\deps\xsd -Force }
+          Get-ChildItem C:\deps\xsd -Recurse -Filter 'xsd.exe' | Select-Object FullName
+          Get-ChildItem C:\deps\xsd -Recurse -Directory -Filter 'libxsd' | Select-Object FullName
+          Get-ChildItem C:\deps\xsd -Recurse -Filter 'xerces-c*.lib' | Select-Object FullName
+        shell: pwsh
+      - name: Provision libxml2 (vcpkg)
+        run: vcpkg install libxml2:x64-windows
+        shell: pwsh
+      - name: Codegen + configure (prepare_build)
+        run: |
+          python quasar.py enable_module open62541-compat v1.5.7
+          python quasar.py set_build_config open6_win_configuration.cmake
+          python quasar.py prepare_build Release
         shell: pwsh
