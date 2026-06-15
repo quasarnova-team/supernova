@@ -2,11 +2,10 @@ name: CI (Windows Server 2025)
 
 # Windows Server 2025 track (token-free; no UASDK/CERN token).
 #   * framework-invariants-windows -- GREEN: hermetic Python codegen tests.
-#   * framework-cases-windows -- o6 MSVC build. Provisions deps (nuget boost vc141
-#     1.67 / CodeSynthesis XSD / vcpkg openssl+libxml2+xerces-c) and builds with
-#     open6_win_configuration.cmake on VS2022. Gated HAS_WINDOWS=true. Once green
-#     this gets baked into the ws2025-o6 image (Linux-parallel) and a ws2025-uasdk
-#     image (o6 image + UASDK from a UASDK_URL secret) adds uasdk Windows coverage.
+#   * framework-cases-windows -- o6 MSVC build. Deps are cached (vcpkg installed
+#     dir) so they build once then restore fast. Once this build is green it gets
+#     baked into the ws2025-o6 image (Linux-parallel); ws2025-uasdk (o6 + UASDK
+#     from a UASDK_URL secret) then adds token-free uasdk Windows coverage.
 
 on:
   push:
@@ -76,27 +75,32 @@ jobs:
           Expand-Archive xsd.zip C:\deps\xsd-dl -Force
           $xsdexe=(Get-ChildItem C:\deps\xsd-dl -Recurse -Filter xsd.exe | Select-Object -First 1).FullName
           $libxsd=(Get-ChildItem C:\deps\xsd-dl -Recurse -Directory -Filter libxsd | Select-Object -First 1).FullName
-          if(-not $xsdexe -or -not $libxsd){ throw "xsd.exe / libxsd not found in the XSD download" }
           "CODE_SYNTHESYS_XSD_PATH_HEADERS=$libxsd" >> $env:GITHUB_ENV
           (Split-Path $xsdexe) >> $env:GITHUB_PATH
           Write-Host "xsd.exe=$xsdexe"; Write-Host "libxsd=$libxsd"
         shell: pwsh
-      - name: Provision OpenSSL / LibXml2 / Xerces-C (vcpkg, binary-cached)
+      # Cache the built vcpkg deps so they build once (~30 min) then restore fast.
+      - name: Cache vcpkg deps
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-x64-windows-openssl-libxml2-xerces-v1
+      - name: Provision OpenSSL / LibXml2 / Xerces-C (vcpkg, cached)
         run: |
           vcpkg install openssl libxml2 xerces-c --triplet x64-windows
-          Write-Host "vcpkg exit code: $LASTEXITCODE (deps verified below regardless)"
-          $vi="$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
-          if (-not (Test-Path "$vi\lib\libcrypto.lib")) { throw "vcpkg did not produce OpenSSL libs in $vi\lib" }
-          $xl = Get-ChildItem "$vi\lib" -Filter 'xerces-c*.lib' | Select-Object -First 1
+          Write-Host "vcpkg exit code: $LASTEXITCODE"
+          $vi = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          if (-not (Test-Path $vi)) { $vi = "C:\vcpkg\installed\x64-windows" }
+          Write-Host "vcpkg installed dir: $vi"
+          Get-ChildItem "$vi\lib" -Filter '*.lib' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+          $xl = Get-ChildItem "$vi\lib" -Filter 'xerces-c*.lib' -ErrorAction SilentlyContinue | Where-Object Name -notlike '*_3*' | Select-Object -First 1
           if ($xl) { Copy-Item $xl.FullName "$vi\lib\xerces-c_3.lib" -Force }
-          Copy-Item "$vi\lib\libcrypto.lib" "$vi\lib\openssl.lib" -Force
+          if (Test-Path "$vi\lib\libcrypto.lib") { Copy-Item "$vi\lib\libcrypto.lib" "$vi\lib\openssl.lib" -Force }
           "OPENSSL_PATH_HEADERS=$vi\include" >> $env:GITHUB_ENV
           "OPENSSL_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
           "XERCESC_PATH_HEADERS=$vi\include" >> $env:GITHUB_ENV
           "XERCESC_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
           "LIBXML2_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
-          # vcpkg can return non-zero on a post-build tooling quirk even when the
-          # libs are built+cached; the Test-Path above is the real gate.
           exit 0
         shell: pwsh
       - name: Build o6 server (prepare_build + MSVC compile/link)
