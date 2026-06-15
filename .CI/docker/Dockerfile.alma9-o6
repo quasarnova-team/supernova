@@ -1,0 +1,35 @@
+# Token-free open62541 CI image (AlmaLinux 9). Derived from
+# quasar-team/docker/quasar-uasdk/Dockerfile with the two `COPY sdk` (UASDK)
+# lines removed: the o6 backend builds against open62541-compat (open source),
+# so no commercial toolkit is needed. UaSwissArmyKnife (uasak_dump) is built
+# against open62541; NodeSetTools provides nodeset_compare.py.
+FROM cern/alma9-base
+
+LABEL org.opencontainers.image.source="https://github.com/parasxos/quasar"
+
+RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+RUN dnf install -y \
+    git \
+    patch \
+  python3-colorama \
+  python3-jinja2 \
+  python3-lxml \
+  python3-pip \
+  cmake3 \
+  gcc-c++ \
+  boost-devel \
+  graphviz \
+  ninja-build \
+  xsd \
+  xerces-c-devel \
+  libxml2-devel \
+  openssl-devel \
+  doxygen \
+  astyle \
+  && dnf clean all \
+  && python3 -m pip install pygit2
+
+RUN git clone https://github.com/quasar-team/UaSwissArmyKnife.git -b v0.7 \
+  && cd UaSwissArmyKnife && bash build_linux_open62541.sh && cd build && make install
+
+RUN cd /opt && git clone https://github.com/quasar-team/NodeSetTools.git -b v0.0.5
