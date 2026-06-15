@@ -66,6 +66,29 @@ jobs:
           path: build/bin/dump.xml
           if-no-files-found: ignore
 
+  # ── cross-backend parity (harvested .parity-night mechanic; advisory) ────
+  # Diffs each case's o6 dump against its uasdk dump. Activates once uasdk
+  # images exist under this owner; on an o6-only run it finds no pairs and
+  # passes. Advisory (non-gating) -- some cross-backend diffs are known-benign.
+  cross_backend_parity:
+    needs: framework-cases
+    if: always()
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/quasar-ci:alma9-o6
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/download-artifact@v4
+        with:
+          path: _dumps
+          pattern: dump-*
+      - run: .CI/cross_backend_parity.py _dumps
+
   # ── configure-floor (build system, no compile): stock CMake 3.16 ─────────
   cmake_316_floor:
     runs-on: ubuntu-latest

@@ -1,5 +1,5 @@
 {
-  "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices) and its 'kind' (oracle|smoke), which decides how a result is judged. Cells are (case x backend x os x compiler); .CI/expand_matrix.py flattens them into a GitHub Actions strategy.matrix, and run_test_case.py --case reads the SAME file so a case is declared exactly once. The CI image of a cell is ghcr.io/<owner>/quasar-ci:<os>-<backend>[-<toolkit_version>]. This revision reproduces the pre-reshape coverage exactly (asymmetric per backend, 22 cells); backend symmetry, PR/nightly tiers and the UASDK-version axis are layered on in later commits.",
+  "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices) and its 'kind' (oracle|smoke), which decides how a result is judged. Cells are (case x backend x os x compiler); .CI/expand_matrix.py flattens them into a GitHub Actions strategy.matrix, and run_test_case.py --case reads the SAME file so a case is declared exactly once. The CI image of a cell is ghcr.io/<owner>/quasar-ci:<os>-<backend>[-<toolkit_version>]. Backend coverage is symmetric -- every case runs on both o6 and uasdk now that the backends are at feature parity (a short per-cell exclude would capture any genuine semantic delta; there are none today). PR/nightly tiers and the UASDK-version axis are layered on top.",
 
   "default_os": "alma9",
 
@@ -80,7 +80,7 @@
       "design": "test_recurrent_hasobjects/Design.xml",
       "config": "test_recurrent_hasobjects/config.xml",
       "generate_devices": true,
-      "backends": ["o6"]
+      "backends": ["o6", "uasdk"]
     },
     {
       "name": "single_variable_node",
@@ -88,7 +88,7 @@
       "design": "test_single_variable_node/Design.xml",
       "config": "test_single_variable_node/config.xml",
       "generate_devices": true,
-      "backends": ["o6"]
+      "backends": ["o6", "uasdk"]
     },
     {
       "name": "instantiation_from_design",
@@ -97,13 +97,13 @@
       "config": "test_instantiation_from_design/config.xml",
       "generate_devices": true,
       "oracle": "test_instantiation_from_design/reference_ns2.xml",
-      "backends": ["o6"]
+      "backends": ["o6", "uasdk"]
     },
     {
       "name": "config_restrictions",
       "kind": "smoke",
       "design": "test_config_restrictions/Design.xml",
-      "backends": ["o6"]
+      "backends": ["o6", "uasdk"]
     },
     {
       "name": "defaulted_instance_name",
@@ -111,7 +111,7 @@
       "design": "test_defaulted_instance_name/Design.xml",
       "config": "test_defaulted_instance_name/config.xml",
       "oracle": "test_defaulted_instance_name/reference_ns2.xml",
-      "backends": ["o6"]
+      "backends": ["o6", "uasdk"]
     }
   ]
 }
