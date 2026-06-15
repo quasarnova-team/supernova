@@ -55,6 +55,11 @@ endif()
 
 message(STATUS "BOOST - include [${BOOST_PATH_HEADERS}] libs [${BOOST_PATH_LIBS}]")
 
+# The default BoostSetup is bypassed on Windows (IGNORE_DEFAULT_BOOST_SETUP), so
+# the Boost headers must be put on the include path here (e.g. boost/xpressive,
+# used by AddressSpace/ASNodeManager.cpp).
+include_directories(${BOOST_PATH_HEADERS})
+
 
 
 if(NOT TARGET libboostprogramoptions)
