@@ -23,6 +23,15 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CASES_DIR = os.path.join(SCRIPT_DIR, 'test_cases')
 MANIFEST = os.path.join(CASES_DIR, 'manifest.json')
 
+# Cross-platform invocation: POSIX uses the script shebang (./x.py); Windows runs
+# it through the interpreter (python x.py). On POSIX every command below stays
+# byte-identical to the original, so the (green) Linux path is unchanged.
+_WIN = os.name == 'nt'
+_QUASAR = 'python quasar.py' if _WIN else './quasar.py'
+_FIXTURE = 'python .CI/travis/server_fixture.py' if _WIN else './.CI/travis/server_fixture.py'
+_NSC_DIR = os.environ.get('QUASAR_NODESETTOOLS', '/opt/NodeSetTools')
+_NSC = ('python ' if _WIN else '') + _NSC_DIR + '/nodeset_compare.py'
+
 
 def invoke_and_check(cmd):
     print(f'{Fore.BLUE}{Style.BRIGHT}Will invoke{Style.RESET_ALL} {cmd}')
@@ -38,16 +47,16 @@ def clone_quasar(test_branch):
 
 def prepare_opcua_backend(opcua_backend, open62541_compat_branch):
     if opcua_backend == 'o6':
-        invoke_and_check(f'./quasar.py enable_module open62541-compat {open62541_compat_branch}')
-        invoke_and_check('./quasar.py set_build_config open62541_config.cmake')
+        invoke_and_check(f'{_QUASAR} enable_module open62541-compat {open62541_compat_branch}')
+        invoke_and_check(f'{_QUASAR} set_build_config open62541_config.cmake')
     elif opcua_backend == 'uasdk':
-        invoke_and_check('./quasar.py set_build_config .CI/travis/build_configs/uasdk-eval.cmake')
+        invoke_and_check(f'{_QUASAR} set_build_config .CI/travis/build_configs/uasdk-eval.cmake')
     else:
         raise Exception(f"OPCUA backend {opcua_backend} was not recognized")
 
 
 def generate_all_devices():
-    invoke_and_check('./quasar.py generate device --all')
+    invoke_and_check(f'{_QUASAR} generate device --all')
 
 
 def overlay_device_sources(device_sources_dir):
@@ -73,15 +82,15 @@ def overlay_device_sources(device_sources_dir):
 
 
 def build():
-    invoke_and_check('./quasar.py build Release')
+    invoke_and_check(f'{_QUASAR} build Release')
 
 
 def run_and_dump_address_space():
-    invoke_and_check('./.CI/travis/server_fixture.py --command_to_run uasak_dump')
+    invoke_and_check(f'{_FIXTURE} --command_to_run uasak_dump')
 
 
 def compare_with_nodeset(reference_ns):
-    invoke_and_check(f'/opt/NodeSetTools/nodeset_compare.py {reference_ns} build/bin/dump.xml --ignore_nodeids StandardMetaData')
+    invoke_and_check(f'{_NSC} {reference_ns} build/bin/dump.xml --ignore_nodeids StandardMetaData')
 
 
 def resolve_case(case_name, manifest_backends):

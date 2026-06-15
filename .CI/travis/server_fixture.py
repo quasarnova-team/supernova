@@ -68,7 +68,8 @@ def main():
 
     os.chdir(os.path.sep.join(['build', 'bin']))
 
-    process = subprocess.Popen('./OpcUaServer')
+    server_bin = 'OpcUaServer.exe' if os.name == 'nt' else './OpcUaServer'
+    process = subprocess.Popen(server_bin)
 
     print_msg('Server process was run under PID: {0}'.format(process.pid))
     print_msg('Now waiting few seconds to let it spin up... ')

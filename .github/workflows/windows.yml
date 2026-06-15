@@ -1,0 +1,69 @@
+name: CI (Windows Server 2025)
+
+# Windows Server 2025 track of the cube. Kept as its own workflow (like
+# open62541-compat/windows.yml) because Windows cells run NATIVELY on a
+# windows-2025 runner (no Linux container), unlike the Linux matrix in ci.yml.
+#
+# GATED OFF by default (manual dispatch + `if: vars.HAS_WINDOWS == 'true'`) so it
+# never auto-runs while the bring-up is validated. To enable:
+#   1. set repo variable HAS_WINDOWS=true
+#   2. (uasdk only) add secret ICS_REPO_DEPS_TOKEN + variable HAS_ICS_TOKEN=true
+#
+# STATUS / BRING-UP NOTES (needs validation on a real windows-2025 runner):
+#   * Deps (Boost / OpenSSL / Xerces-C / XSD / libxml2) are produced by the
+#     quasar-team/images `w2025` PowerShell scripts (Build-*.ps1). The robust
+#     pattern is to build them ONCE into a cached bundle and restore it here
+#     (per-run source builds of OpenSSL/Boost are far too slow on a hosted
+#     runner). UASDK (uasdk builds) needs the CERN token; o6 is token-free.
+#   * quasar is Windows-aware (CMakeLists `if(WIN32 AND MSVC)`,
+#     cmake/FindOpcUaToolkit.cmake, open6_win_configuration.cmake) and the
+#     driver/fixture are now cross-platform (python invocation, OpcUaServer.exe).
+#   * uasak_dump + NodeSetTools must be available on Windows for oracle cases;
+#     point QUASAR_NODESETTOOLS at the NodeSetTools checkout. Smoke cases
+#     (build + run) need neither and are the first thing to green.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backends:
+        description: 'Comma-separated backends (o6 is token-free; uasdk needs the CERN token)'
+        default: 'o6'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  framework-cases-windows:
+    if: ${{ vars.HAS_WINDOWS == 'true' }}
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [default_design, methods]
+        backend: [o6]
+    env:
+      BOOST_ROOT: C:\quasar-deps\boost
+      XERCES_C_HOME: C:\quasar-deps\xerces-c
+      XSD_HOME: C:\quasar-deps\xsd
+      LIBXML2_HOME: C:\quasar-deps\libxml2
+      LIBSSL_HOME: C:\quasar-deps\libssl
+      UNIFIED_AUTOMATION_HOME: C:\quasar-deps\unified-automation
+      QUASAR_NODESETTOOLS: C:\quasar-deps\NodeSetTools
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # VALIDATE: restore the prebuilt Windows dependency bundle produced by the
+      # images/w2025 scripts (cache or release asset), populating C:\quasar-deps.
+      # Placeholder until the bundle exists; the job is gated off meanwhile.
+      - name: Provision Windows dependencies (bundle restore)
+        run: |
+          Write-Host "TODO: restore the w2025 dependency bundle into C:\quasar-deps"
+          Write-Host "  (Boost / OpenSSL / Xerces-C / XSD / libxml2 [+ UASDK when HAS_ICS_TOKEN])"
+        shell: pwsh
+
+      - name: Build + evaluate case (cross-platform driver)
+        run: python .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
+        shell: pwsh
