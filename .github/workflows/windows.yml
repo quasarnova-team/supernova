@@ -128,6 +128,10 @@ jobs:
       - name: Build o6 server (prepare_build + MSVC compile/link)
         run: |
           python quasar.py enable_module open62541-compat v1.5.7
+          # Fetch compat from the parasxos fork branch = v1.5.7 + the MSVC C-flags
+          # guard for the bundled open62541 amalgamation.
+          Set-Content -Encoding ascii FrameworkInternals\EnabledModules\open62541-compat.url 'https://github.com/parasxos/open62541-compat.git'
+          Set-Content -Encoding ascii FrameworkInternals\EnabledModules\open62541-compat.tag 'msvc-cflags-157'
           python quasar.py set_build_config open6_win_configuration.cmake
           python quasar.py build Release
         shell: pwsh
