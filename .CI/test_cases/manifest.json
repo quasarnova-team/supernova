@@ -1,0 +1,117 @@
+{
+  "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices), its 'kind' (oracle|smoke) which decides how a result is judged, and which backends/cells it runs on. .CI/expand_matrix.py turns this into the GitHub Actions job matrix; run_test_case.py --case reads the same file, so a case is declared exactly once. This revision reproduces the pre-reshape coverage exactly (asymmetric per backend); backend symmetry, PR/nightly tiers and the UASDK-version axis are added in later commits.",
+
+  "images": { "default": "latest", "alma10": "alma10" },
+
+  "backends": {
+    "o6":    { "compat_branch": "v1.5.7" },
+    "uasdk": {}
+  },
+
+  "cases": [
+    {
+      "name": "default_design",
+      "kind": "oracle",
+      "oracle": "test_default_quasar_design/reference_ns2.xml",
+      "backends": ["o6", "uasdk"],
+      "extra_cells": [
+        { "backend": "o6",    "image": "alma10" },
+        { "backend": "uasdk", "image": "alma10" },
+        { "backend": "o6",    "image": "alma10", "compiler": "clang" }
+      ]
+    },
+    {
+      "name": "methods",
+      "kind": "oracle",
+      "design": "test_methods/Design.xml",
+      "config": "test_methods/config.xml",
+      "generate_devices": true,
+      "oracle": "test_methods/reference_ns2.xml",
+      "backends": ["o6", "uasdk"]
+    },
+    {
+      "name": "async_methods",
+      "kind": "oracle",
+      "design": "test_async_methods/Design.xml",
+      "config": "test_async_methods/config.xml",
+      "generate_devices": true,
+      "oracle": "test_methods/reference_ns2.xml",
+      "backends": ["o6", "uasdk"]
+    },
+    {
+      "name": "cache_variables",
+      "kind": "oracle",
+      "design": "test_cache_variables/Design.xml",
+      "config": "test_cache_variables/config.xml",
+      "generate_devices": true,
+      "device_sources": "test_cache_variables",
+      "oracle": "test_cache_variables/reference_ns2.xml",
+      "backends": ["o6", "uasdk"]
+    },
+    {
+      "name": "source_variables",
+      "kind": "oracle",
+      "design": "test_source_variables/Design.xml",
+      "config": "test_source_variables/config.xml",
+      "generate_devices": true,
+      "oracle": "test_source_variables/reference_ns2.xml",
+      "backends": ["o6", "uasdk"]
+    },
+    {
+      "name": "config_entries",
+      "kind": "oracle",
+      "design": "test_config_entries/Design.xml",
+      "config": "test_config_entries/config.xml",
+      "generate_devices": true,
+      "oracle": "test_config_entries/reference_ns2.xml",
+      "backends": ["o6", "uasdk"]
+    },
+    {
+      "name": "calculated_variables",
+      "kind": "oracle",
+      "design": "test_calculated_variables/Design.xml",
+      "config": "test_calculated_variables/config.xml",
+      "oracle": "test_calculated_variables/reference_ns2.xml",
+      "backends": ["o6", "uasdk"]
+    },
+    {
+      "name": "recurrent_hasobjects",
+      "kind": "smoke",
+      "design": "test_recurrent_hasobjects/Design.xml",
+      "config": "test_recurrent_hasobjects/config.xml",
+      "generate_devices": true,
+      "backends": ["o6"]
+    },
+    {
+      "name": "single_variable_node",
+      "kind": "smoke",
+      "design": "test_single_variable_node/Design.xml",
+      "config": "test_single_variable_node/config.xml",
+      "generate_devices": true,
+      "backends": ["o6"]
+    },
+    {
+      "name": "instantiation_from_design",
+      "kind": "oracle",
+      "design": "test_instantiation_from_design/Design.xml",
+      "config": "test_instantiation_from_design/config.xml",
+      "generate_devices": true,
+      "oracle": "test_instantiation_from_design/reference_ns2.xml",
+      "backends": ["o6"]
+    },
+    {
+      "name": "config_restrictions",
+      "kind": "smoke",
+      "design": "test_config_restrictions/Design.xml",
+      "backends": ["o6"]
+    },
+    {
+      "name": "defaulted_instance_name",
+      "kind": "oracle",
+      "design": "test_defaulted_instance_name/Design.xml",
+      "config": "test_defaulted_instance_name/config.xml",
+      "oracle": "test_defaulted_instance_name/reference_ns2.xml",
+      "backends": ["o6"]
+    }
+  ]
+}
