@@ -70,7 +70,8 @@ jobs:
       # expects (BOOST_PATH_*, CODE_SYNTHESYS_XSD_PATH_HEADERS, OPENSSL_PATH_*,
       # XERCESC_PATH_*, LIBXML2_PATH_LIBS). Placeholder while the bundle is built.
       - name: Provision Windows dependencies (bundle restore)
-        run: Write-Host "TODO: restore w2025 dep bundle + export *_PATH_* env vars"
+        run: |
+          Write-Host "TODO: restore w2025 dep bundle and export the *_PATH_* env vars"
         shell: pwsh
       - name: Build + evaluate case (cross-platform driver)
         run: python .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
