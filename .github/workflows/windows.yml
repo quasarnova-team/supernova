@@ -198,7 +198,10 @@ jobs:
       - name: Windows o6 oracle (run + uasak_dump + NodeSet compare)
         run: |
           $ErrorActionPreference='Stop'
-          $env:Path += ";$PWD\uasak\build"
+          # uasak_dump.exe is on PATH from its build dir; the vcpkg bin dir carries the
+          # runtime DLLs (xerces-c / libxml2 / openssl) that both OpcUaServer.exe and
+          # uasak_dump.exe load -- this is the first time either actually runs.
+          $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin"
           git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
           $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
           python .CI\travis\server_fixture.py --command_to_run uasak_dump
