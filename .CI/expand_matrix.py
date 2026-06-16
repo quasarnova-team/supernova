@@ -102,6 +102,13 @@ def expand(manifest):
         for case in manifest['cases']:
             for backend in case.get('backends', []):
                 cells += emit(case, backend, os_name, 'gcc', 'nightly', force_tier='nightly')
+    # Extra compilers (e.g. clang): run the FULL case set with that compiler at nightly, on the
+    # listed backends/os. Compiler-portability coverage beyond the default gcc.
+    for nc in manifest.get('nightly_compilers', []):
+        for case in manifest['cases']:
+            for backend in nc.get('backends', []):
+                if backend in case.get('backends', []):
+                    cells += emit(case, backend, nc['os'], nc['compiler'], 'nightly', force_tier='nightly')
     # De-dup by label: explicit extra_cells (emitted above, first) win, preserving their tier
     # and compiler (e.g. default_design's PR alma10 smoke + the alma10/clang cell).
     deduped = {}

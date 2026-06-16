@@ -4,6 +4,10 @@
   "default_os": "alma9",
   "_nightly_os_doc": "OSes that run the FULL case set (all cases x backends x toolkit versions) at nightly tier. default_os carries the per-case/per-version tiers (PR + nightly); nightly_os mirrors the whole set on the newer EL at nightly so PR stays lean. Explicit per-case extra_cells (e.g. default_design's PR alma10 smoke + clang) are preserved -- they are emitted first and win de-duplication.",
   "nightly_os": ["alma10"],
+  "_nightly_compilers_doc": "Extra compiler(s) run over the FULL case set at nightly tier (compiler-portability coverage beyond the default gcc). clang on alma10/o6 -- uasdk static libs are gcc-built so clang is kept to o6 to avoid a cross-compiler-ABI variable.",
+  "nightly_compilers": [
+    { "compiler": "clang", "os": "alma10", "backends": ["o6"] }
+  ],
 
   "backends": {
     "o6":    { "compat_branch": "v1.5.7" },
