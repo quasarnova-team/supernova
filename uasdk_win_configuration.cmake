@@ -164,6 +164,14 @@ SET( OPCUA_TOOLKIT_LIBS_DEBUG   uamoduled.lib coremoduled.lib uabasecppd.lib uas
 #General
 #------
 add_definitions(-DSUPPORT_XML_CONFIG -DWIN32_LEAN_AND_MEAN)
+# The UASDK platform headers (uabasecpp/uaplatformdefs.h) pull in the full Windows API,
+# which transitively includes <msxml.h>; its global ::DOMDocument then collides with
+# xercesc::DOMDocument inside CodeSynthesis XSD's serialization.txx -> C2872 'DOMDocument'
+# ambiguous in any quasar TU that mixes UASDK headers with the generated Configuration
+# (Xerces) headers. quasar/UASDK use libxml2 + Xerces, never msxml, so suppress msxml.h via
+# its include guard. (The o6 backend never drags the Windows COM headers into XSD TUs, so
+# this is needed only for the UA Toolkit backend.)
+add_definitions(-D_INC_MSXML)
 set(CMAKE_CXX_FLAGS_RELEASE "/MD")
 set(CMAKE_CXX_FLAGS_DEBUG "/MDd /Zi")
 SET( CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG bin/)
