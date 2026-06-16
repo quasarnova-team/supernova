@@ -95,3 +95,72 @@ jobs:
             OWNER=${{ github.repository_owner }}
             OS_TAG=${{ matrix.os }}
             UASDK_TARBALL=${{ env.UASDK_TARBALL }}
+
+  # Native arm64 images on the free GitHub ubuntu-24.04-arm runners (built natively, not via
+  # QEMU, so the compat-from-source build is fast). alma9 only -- the representative aarch64
+  # set for the nightly arch cells. arm64 Linux is the same gcc/libstdc++ family as x86_64.
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { tag: alma9-o6-arm64, dockerfile: .CI/docker/Dockerfile.alma9-o6 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/quasar-ci:${{ matrix.tag }}
+          cache-from: type=gha,scope=${{ matrix.tag }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.tag }}
+
+  # arm64 uasdk image: FROM the arm64 o6 image + the aarch64 SDK tarball (1.7.9, el9).
+  build-uasdk-arm64:
+    needs: build-arm64
+    if: ${{ vars.HAS_UASDK == 'true' }}
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [alma9]
+        version: ['1.7.9']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pre-built UASDK ${{ matrix.version }} (aarch64, ${{ matrix.os }})
+        env:
+          GH_TOKEN: ${{ secrets.UASDK_DL_TOKEN }}
+        run: |
+          el="${{ matrix.os }}"; el="${el#alma}"
+          tag="uasdk-${{ matrix.version }}-aarch64-el${el}"
+          mkdir -p .CI/docker/_uasdk
+          gh release download "$tag" --repo paris-atlas-dcs/uasdk-paris-tools --pattern 'uasdk-*.tar.gz' --dir .CI/docker/_uasdk
+          tb="$(ls .CI/docker/_uasdk/uasdk-*.tar.gz | head -1)"
+          test -n "$tb" || { echo "no uasdk tarball in release $tag"; exit 1; }
+          echo "UASDK_TARBALL=$tb" >> "$GITHUB_ENV"
+          echo "downloaded $tb from $tag"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .CI/docker/Dockerfile.uasdk
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/quasar-ci:${{ matrix.os }}-uasdk-${{ matrix.version }}-arm64
+          build-args: |
+            OWNER=${{ github.repository_owner }}
+            OS_TAG=${{ matrix.os }}
+            BASE_ARCH_SUFFIX=-arm64
+            UASDK_TARBALL=${{ env.UASDK_TARBALL }}

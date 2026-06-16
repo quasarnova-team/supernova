@@ -8,6 +8,10 @@
   "nightly_compilers": [
     { "compiler": "clang", "os": "alma10", "backends": ["o6"] }
   ],
+  "_nightly_arches_doc": "Extra CPU architectures run at nightly on native GitHub arm64 runners (ubuntu-24.04-arm, free for public repos) with arch-tagged images (e.g. quasar-ci:alma9-o6-arm64). 'versions' limits which uasdk toolkit versions get an arch image built; o6 + uasdk 1.7.9 on alma9 is the representative aarch64 set (the user ships aarch64 SDK builds). Same gcc/libstdc++ family as x86_64, so the framework/compat/uasak builds are portable.",
+  "nightly_arches": [
+    { "arch": "arm64", "os": "alma9", "versions": ["1.7.9"] }
+  ],
 
   "backends": {
     "o6":    { "compat_branch": "v1.5.7" },

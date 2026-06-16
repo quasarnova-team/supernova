@@ -13,7 +13,10 @@
 # which becomes /opt/uasdk as uasdk-eval.cmake expects.
 ARG OWNER=parasxos
 ARG OS_TAG=alma9
-FROM ghcr.io/${OWNER}/quasar-ci:${OS_TAG}-o6
+# Arch suffix on the o6 base image: empty for x86_64 (:<os>-o6), '-arm64' for the native
+# arm64 build (:<os>-o6-arm64). Lets one Dockerfile produce both-arch uasdk images.
+ARG BASE_ARCH_SUFFIX=
+FROM ghcr.io/${OWNER}/quasar-ci:${OS_TAG}-o6${BASE_ARCH_SUFFIX}
 
 ARG UASDK_TARBALL
 RUN test -n "$UASDK_TARBALL" || { echo "UASDK_TARBALL build-arg required (pre-built SDK tarball placed in the build context by build-uasdk)"; exit 1; }

@@ -49,11 +49,18 @@ def _image(os_name, backend, toolkit_version):
     return '{}-{}'.format(os_name, backend)
 
 
-def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier):
+def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier, arch='x86_64'):
     name = case['name']
     parts = [name, backend, os_name] + ([compiler] if compiler != 'gcc' else [])
     if toolkit_version:
         parts.append(toolkit_version)
+    image = _image(os_name, backend, toolkit_version)
+    runner = 'ubuntu-latest'
+    if arch != 'x86_64':
+        # arch-tagged image (built natively on an arch runner) + arch label suffix + arch runner.
+        parts.append(arch)
+        image = '{}-{}'.format(image, arch)
+        runner = 'ubuntu-24.04-arm' if arch == 'arm64' else 'ubuntu-latest'
     return {
         'label': '-'.join(parts),
         'case': name,
@@ -61,8 +68,10 @@ def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier):
         'os': os_name,
         'compiler': compiler,
         'toolkit_version': toolkit_version or '',
+        'arch': arch,
+        'runner': runner,
         'tier': tier,
-        'image': _image(os_name, backend, toolkit_version),
+        'image': image,
         'cc': _CC[compiler],
         'cxx': _CXX[compiler],
         'compat_branch': manifest['backends'].get(backend, {}).get('compat_branch', ''),
@@ -109,6 +118,27 @@ def expand(manifest):
             for backend in nc.get('backends', []):
                 if backend in case.get('backends', []):
                     cells += emit(case, backend, nc['os'], nc['compiler'], 'nightly', force_tier='nightly')
+    # Extra architectures (e.g. arm64): run the case set at nightly on a native arch runner with
+    # arch-tagged images. 'versions' restricts which uasdk toolkit versions get an arch image
+    # (we only build a subset of arch images); 'cases' optionally restricts the case set.
+    for na in manifest.get('nightly_arches', []):
+        arch = na['arch']
+        arch_os = na.get('os', default_os)
+        keep_versions = set(na.get('versions', []))
+        keep_cases = set(na.get('cases', []))
+        for case in manifest['cases']:
+            if keep_cases and case['name'] not in keep_cases:
+                continue
+            for backend in case.get('backends', []):
+                versions = toolkits.get(backend)
+                if versions:
+                    for tk in versions:
+                        if keep_versions and tk['version'] not in keep_versions:
+                            continue
+                        cells.append(_cell(manifest, case, backend, arch_os, 'gcc',
+                                           tk['version'], 'nightly', arch=arch))
+                else:
+                    cells.append(_cell(manifest, case, backend, arch_os, 'gcc', None, 'nightly', arch=arch))
     # De-dup by label: explicit extra_cells (emitted above, first) win, preserving their tier
     # and compiler (e.g. default_design's PR alma10 smoke + the alma10/clang cell).
     deduped = {}
