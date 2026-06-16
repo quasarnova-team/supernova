@@ -134,13 +134,27 @@ jobs:
           $root = (Get-ChildItem C:\uasdk-src -Recurse -Filter CMakeLists.txt | Sort-Object { $_.FullName.Length } | Select-Object -First 1).Directory.FullName
           Write-Host "SDK source root: $root"
           $vi = 'C:\vcpkg\installed\x64-windows'
-          # First-draft build flags (mirror the Linux build.yml, adapted for MSVC/Ninja +
-          # vcpkg OpenSSL/LibXml2). Expect to iterate here on the first gated CI run.
+          # The 1.6.5 bundle's SetThirdPartyPaths only recognizes up to vs2019 and FATALs on
+          # the runner's vc143. We follow the quasar-team's Windows approach -- provide x64
+          # OpenSSL/libxml2 externally (vcpkg), so the bundle's win32/vs2015 third-party isn't
+          # needed -- and patch the unrecognized-VS FATAL to default COMPILER_DIR=vs2019 so
+          # configure proceeds.
+          $stp = (Get-ChildItem "$root\cmake" -Filter SetThirdPartyPaths.cmake -ErrorAction SilentlyContinue | Select-Object -First 1)
+          if ($stp) {
+            (Get-Content $stp.FullName -Raw).Replace(
+              'message(FATAL_ERROR "The used Visual Studio version was not recognized. "',
+              "set(COMPILER_DIR vs2019)`n                message(STATUS `"VS unrecognized; defaulting COMPILER_DIR=vs2019 (external third-party provided). `"") | Set-Content $stp.FullName
+            Write-Host "patched SetThirdPartyPaths for vc143"
+          }
+          # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
+          # /FIconio.h). Dynamic vcpkg libs -> their DLLs go on PATH for the oracle run.
           cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
             -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
-            -DBUILD_EXAMPLES=off -DBUILD_UACLIENTCPP_APP=off -DBUILD_UASERVERCPP_APP=off `
-            -DUASTACK_OPENSSL_COMPAT=1.1.0 -DCMAKE_PREFIX_PATH="$vi" `
-            -DCMAKE_INSTALL_PREFIX=C:\uasdk; chk "uasdk configure"
+            -DUASTACK_WITH_PKI_WIN32=ON -DUASTACK_CLIENTAPI_ENABLED=ON -DBUILD_UACLIENTCPP=ON `
+            -DOPENSSL_ROOT_DIR="$vi" `
+            -DLIBXML2_INCLUDE_DIR="$vi/include/libxml2" -DLIBXML2_LIBRARIES="$vi/lib/libxml2.lib" `
+            -DCMAKE_CXX_FLAGS="/FIconio.h" -DCMAKE_EXE_LINKER_FLAGS="/DEFAULTLIB:bcrypt.lib" `
+            -DCMAKE_PREFIX_PATH="$vi" -DCMAKE_INSTALL_PREFIX=C:\uasdk; chk "uasdk configure"
           cmake --build C:\uasdk-b; chk "uasdk build"
           cmake --install C:\uasdk-b; chk "uasdk install"
           "OPCUA_TOOLKIT_PATH=C:\uasdk" >> $env:GITHUB_ENV
