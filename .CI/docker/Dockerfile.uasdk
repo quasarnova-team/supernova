@@ -1,41 +1,28 @@
 # Token-free UASDK CI image = the o6 image (build deps + the bare
 # open62541-1.2.2 uasak dump tool + NodeSetTools) PLUS the Unified Automation
-# C++ SDK built from source at /opt/uasdk, which uasdk-eval.cmake points at for
-# building the UASDK-backed quasar server. The dump tool stays the o6 uasak: it
-# is an OPC UA *client*, backend-agnostic, and its bare-NodeId output matches the
-# reference NodeSets for both backends.
+# C++ SDK pre-built (static libs) at /opt/uasdk, where uasdk-eval.cmake points.
+# The dump tool stays the o6 uasak: it is an OPC UA *client*, backend-agnostic,
+# and its bare-NodeId output matches the reference NodeSets for both backends.
 #
-# UASDK is commercial -- there is no public download, so quasar can't bundle it.
-# Provide the SOURCE bundle yourself via the UASDK_URL build-arg (a quasar secret;
-# e.g. a presigned URL to a copy you host). This replaces the old CERN
-# ICS_REPO_DEPS_TOKEN path -- no CERN token is used.
-#
-# UASDK_URL may contain {version} and {full} placeholders, substituted from
-# UASDK_VERSION (full expands 2.0.2 -> 2.0.2-675). So a single secret like
-#   https://<host>/uasdk/{full}/uasdkcppbundle-src-linux-v{full}.zip
-# covers all versions if you host versioned paths; or pass a fixed URL for one.
+# UASDK is commercial -- there is no public download, so quasar can't bundle or
+# rebuild it here. The build-uasdk job (build-ci-images.yml) downloads the
+# matching pre-built tarball from paris-atlas-dcs/uasdk-paris-tools GitHub
+# Releases -- authenticated by a GitHub App, NOT the CERN ICS_REPO_DEPS_TOKEN --
+# and drops it in the build context as UASDK_TARBALL; this image just extracts it.
+# The tarball is the SDK install tree (`uasdk-<ver>-gcc<gccver>/{include,lib,...}`),
+# which becomes /opt/uasdk as uasdk-eval.cmake expects.
 ARG OWNER=parasxos
 ARG OS_TAG=alma9
 FROM ghcr.io/${OWNER}/quasar-ci:${OS_TAG}-o6
 
-ARG UASDK_VERSION=1.7.9
-ARG UASDK_URL
-RUN test -n "$UASDK_URL" || { echo "UASDK_URL build-arg required (token-free uasdk bundle URL; may use {version}/{full})"; exit 1; }
-RUN dnf install -y unzip || true
+ARG UASDK_TARBALL
+RUN test -n "$UASDK_TARBALL" || { echo "UASDK_TARBALL build-arg required (pre-built SDK tarball placed in the build context by build-uasdk)"; exit 1; }
+COPY ${UASDK_TARBALL} /tmp/uasdk.tar.gz
 RUN set -eux; \
-    ver="${UASDK_VERSION}"; \
-    case "$ver" in 2.0.2) full="2.0.2-675";; *) full="$ver";; esac; \
-    url="$(printf '%s' "$UASDK_URL" | sed -e "s/{version}/${ver}/g" -e "s/{full}/${full}/g")"; \
-    echo "Fetching UASDK ${ver} from ${url}"; \
-    mkdir -p /tmp/u; \
-    curl -fsSL "$url" -o /tmp/u/uasdk.zip; \
-    unzip -q /tmp/u/uasdk.zip -d /tmp/u/src; \
-    root="$(find /tmp/u/src -name CMakeLists.txt -printf '%d:%h\n' | sort -n | head -1 | cut -d: -f2-)"; \
-    cmake -S "$root" -B /tmp/u/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF -DUASTACK_CLIENTAPI_ENABLED=ON \
-      -DBUILD_UACLIENTCPP=ON -DUASDK_WITH_CRYPTO=ON -DUASDK_WITH_XMLPARSER=ON \
-      -DOPENSSL_USE_STATIC_LIBS=TRUE -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-      -DCMAKE_INSTALL_PREFIX=/opt/uasdk; \
-    cmake --build /tmp/u/build --parallel "$(nproc)"; \
-    cmake --install /tmp/u/build; \
-    rm -rf /tmp/u
+    mkdir -p /tmp/x; \
+    tar xzf /tmp/uasdk.tar.gz -C /tmp/x; \
+    d="$(find /tmp/x -maxdepth 1 -type d -name 'uasdk-*')"; \
+    test -n "$d"; \
+    mv "$d" /opt/uasdk; \
+    rm -rf /tmp/uasdk.tar.gz /tmp/x; \
+    test -d /opt/uasdk/lib && test -d /opt/uasdk/include
