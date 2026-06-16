@@ -14,6 +14,7 @@ against a reference; 'smoke' is satisfied by a clean build + run.
 """
 import argparse
 import os
+import re
 import shutil
 import sys
 import json
@@ -105,6 +106,23 @@ def run_and_dump_address_space():
     invoke_and_check(f'{_FIXTURE} --command_to_run uasak_dump')
 
 
+def normalize_nodeid_quoting(dump_path):
+    """open62541 >= 1.5 (UA_print) wraps NodeIds in quotes -- a DataType of i=296 is dumped
+    as "i=296". The reference NodeSets (and the bare-NodeId Linux dumps, whose uasak_dump is
+    pinned to compat v1.4.7 / o6 1.2.2) are unquoted. v1.4.7 predates Windows support (it bakes
+    UA_ARCHITECTURE_POSIX), so the Windows uasak_dump must use a quoting v1.5.x compat; strip the
+    quote-wrapping from its NodeId-valued attributes so the dump matches the bare references. The
+    NodeId VALUE is preserved -- only the cosmetic open62541-version quote style is removed."""
+    with open(dump_path, encoding='utf-8') as handle:
+        text = handle.read()
+    # SomeAttr="&quot;<nodeid>&quot;"  ->  SomeAttr="<nodeid>"   (nodeid = [ns=N;]i=|s=|g=|b=...)
+    fixed = re.sub(r'="&quot;((?:ns=\d+;)?[isgb]=[^&]*?)&quot;"', r'="\1"', text)
+    if fixed != text:
+        with open(dump_path, 'w', encoding='utf-8') as handle:
+            handle.write(fixed)
+        print(f'{Fore.CYAN}Normalized quoted NodeIds -> bare in {dump_path} for the oracle compare.{Style.RESET_ALL}')
+
+
 def compare_with_nodeset(reference_ns):
     invoke_and_check(f'{_NSC} {reference_ns} build/bin/dump.xml --ignore_nodeids StandardMetaData')
 
@@ -177,6 +195,8 @@ def main():
     run_and_dump_address_space()
 
     if oracle:
+        if _WIN:
+            normalize_nodeid_quoting('build/bin/dump.xml')
         compare_with_nodeset(oracle)
     else:
         print(f'{Fore.CYAN}Smoke case: clean build + run was the assertion (no NodeSet reference).{Style.RESET_ALL}')

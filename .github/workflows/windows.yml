@@ -111,6 +111,13 @@ jobs:
           python .CI\run_test_case.py --case ${{ matrix.case }} --backend o6
           if ($LASTEXITCODE -ne 0) { throw "case ${{ matrix.case }} (o6) failed" }
         shell: pwsh
+      - name: Upload dump.xml (oracle-compare debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windump-o6-${{ matrix.case }}
+          path: build/bin/dump.xml
+          if-no-files-found: ignore
 
   # uasdk × Windows. Builds the Unified Automation UA Toolkit x64 from source
   # (the source builds for the active MSVC arch; we reuse the x64 setup-quasar-windows
