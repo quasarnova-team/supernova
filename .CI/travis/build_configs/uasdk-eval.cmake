@@ -46,9 +46,11 @@ if( EXISTS "${OPCUA_TOOLKIT_PATH}/lib/libuamodule.a" )
         SET( OPCUA_TOOLKIT_LIBS_DEBUG   "-luamoduled -lcoremoduled -luabasecppd -luastackd -luapkicppd -lxmlparsercppd -lxml2 -lssl -lcrypto -lpthread" )
         SET( _UASDK_INCDIRS uabasecpp uaservercpp uapkicpp uastack xmlparsercpp )
 else()
-        # UA SDK 2.0.x layout. --start-group lets ld resolve the static inter-lib references
-        # regardless of -l order (the 2.0.x modules are mutually referential).
-        SET( OPCUA_TOOLKIT_LIBS_RELEASE "-Wl,--start-group -lcoremodule -luabasecpp -luastack -Wl,--end-group -lxml2 -lssl -lcrypto -lpthread" )
+        # UA SDK 2.0.x layout. embeddedstack provides the low-level C base (ua_malloc/ua_free,
+        # ua_buffer_*, the ua_jdecode_* JSON decoder, ua_decoder_context_*) that uabasecpp links
+        # against -- it is a required dependency, not an alternative to uastack. --start-group
+        # lets ld resolve the mutually-referential 2.0.x static modules regardless of -l order.
+        SET( OPCUA_TOOLKIT_LIBS_RELEASE "-Wl,--start-group -lcoremodule -luabasecpp -luastack -lembeddedstack -Wl,--end-group -lxml2 -lssl -lcrypto -lpthread" )
         SET( OPCUA_TOOLKIT_LIBS_DEBUG   "${OPCUA_TOOLKIT_LIBS_RELEASE}" )
         SET( _UASDK_INCDIRS uabasecpp uaservercpp uastack uaclientcpp )
 endif()
