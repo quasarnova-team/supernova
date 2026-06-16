@@ -168,11 +168,14 @@ jobs:
           # Drop the inherited vcpkg toolchain so CMAKE_POLICY_VERSION_MINIMUM=3.5 is honored (see above);
           # OpenSSL/libxml2 are supplied explicitly via -D and CMAKE_PREFIX_PATH instead.
           Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
-          cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+          # NOTE: quote the dotted numeric values -- PowerShell splits a bare -DFOO=3.5 into
+          # "-DFOO=3" + ".5" (cmake then sees CMAKE_POLICY_VERSION_MINIMUM="3" -> invalid, and
+          # OPENSSL_VERSION="3" -> FindUaOpenSSL list-index error). Quoting keeps them intact.
+          cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM="3.5" `
             -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
             -DBUILD_EXAMPLES=off -DBUILD_UACLIENTCPP_APP=off -DBUILD_UASERVERCPP_APP=off `
             -DUASTACK_WITH_PKI_WIN32=ON -DUASTACK_CLIENTAPI_ENABLED=ON -DBUILD_UACLIENTCPP=ON `
-            -DOPENSSL_INCLUDE_DIR="$vi/include" -DOPENSSL_SSL_LIBRARY="$vi/lib/libssl.lib" -DOPENSSL_CRYPTO_LIBRARY="$vi/lib/libcrypto.lib" -DOPENSSL_VERSION=3.5.5 `
+            -DOPENSSL_INCLUDE_DIR="$vi/include" -DOPENSSL_SSL_LIBRARY="$vi/lib/libssl.lib" -DOPENSSL_CRYPTO_LIBRARY="$vi/lib/libcrypto.lib" -DOPENSSL_VERSION="3.5.5" `
             -DLIBXML2_INCLUDE_DIR="$vi/include/libxml2" -DLIBXML2_LIBRARIES="$vi/lib/libxml2.lib" `
             -DCMAKE_CXX_FLAGS="/FIconio.h" -DCMAKE_EXE_LINKER_FLAGS="/DEFAULTLIB:bcrypt.lib" `
             -DCMAKE_PREFIX_PATH="$vi" -DCMAKE_INSTALL_PREFIX=C:\uasdk; chk "uasdk configure"
