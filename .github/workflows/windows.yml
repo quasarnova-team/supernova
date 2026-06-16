@@ -74,66 +74,8 @@ jobs:
           python quasar.py set_build_config open6_win_configuration.cmake
           python quasar.py build Release
         shell: pwsh
-      - name: Build uasak_dump (+ LogIt + compat) on Windows
-        run: |
-          $ErrorActionPreference='Stop'
-          # PowerShell's ErrorActionPreference does NOT stop on a native-exe nonzero
-          # exit, so a failed cmake silently cascades. Guard every cmake call so the
-          # first real failure stops here and is attributable.
-          function chk($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" } }
-          # LogIt (2.8) and uasak (3.0) declare cmake_minimum_required < 3.5, which the
-          # runner's CMake 4.x removed support for -- the documented escape hatch is
-          # CMAKE_POLICY_VERSION_MINIMUM=3.5 (harmless for compat, which requires 3.16).
-          $policy = '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
-          # LogIt/compat/uasak resolve Boost via find_package(Boost COMPONENTS ...),
-          # which is independent of quasar's path-based BoostSetup. Two adjustments
-          # are needed for the nuget Boost on this runner:
-          #  * Drop the job-inherited vcpkg CMAKE_TOOLCHAIN_FILE -- LogIt's stand-alone
-          #    CMake include()s it and then FATALs because it never sets BOOST_LIBS.
-          #    Without it, LogIt falls back to its own find_package(Boost) path.
-          #  * Steer FindBoost at the nuget vc141 *static* layout: the runner's cl is
-          #    vc143, so FindBoost would otherwise hunt for -vc143 libs nuget never ships.
-          Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
-          # Collect the nuget boost component libs into one dir for FindBoost's
-          # BOOST_LIBRARYDIR. Materialise the source list with @(...) and exclude the
-          # destination, or the lazy -Recurse enumeration walks into libs/ mid-copy and
-          # fails ("cannot overwrite the item ... with itself"). nuget ships x32+x64 and
-          # release+debug; FindBoost picks -x64 release via the hints below.
-          $libDst = 'C:\deps\boost\libs'
-          New-Item -ItemType Directory -Force $libDst | Out-Null
-          $srcLibs = @(Get-ChildItem C:\deps\boost -Recurse -Filter 'libboost_*.lib' -File | Where-Object { $_.DirectoryName -ne $libDst })
-          Write-Host "collecting $($srcLibs.Count) boost libs into $libDst"
-          $srcLibs | Copy-Item -Destination $libDst -Force
-          $boost = @(
-            "-DBOOST_INCLUDEDIR=$env:BOOST_PATH_HEADERS",
-            "-DBOOST_LIBRARYDIR=C:\deps\boost\libs",
-            "-DBoost_USE_STATIC_LIBS=ON",
-            "-DBoost_COMPILER=-vc141",
-            "-DBoost_ARCHITECTURE=-x64",
-            "-DBoost_NO_BOOST_CMAKE=ON"
-          )
-          git clone --depth=1 -b windows-msvc https://github.com/parasxos/UaSwissArmyKnife.git uasak
-          cd uasak
-          New-Item -ItemType Directory -Force build\deploy | Out-Null
-          # 1) LogIt v0.1.3 -> static lib + headers into build/deploy/LogIt
-          git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git build\work\LogIt
-          cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja $policy -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"; chk "LogIt configure"
-          cmake --build build\work\LogIt\b; chk "LogIt build"
-          cmake --install build\work\LogIt\b; chk "LogIt install"
-          # 2) open62541-compat (fork) -> static lib + headers into build/deploy/open62541-compat
-          git clone -b msvc-cflags-157 https://github.com/parasxos/open62541-compat.git build\work\compat
-          cmake -S build\work\compat -B build\work\compat\b -G Ninja $policy -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON; chk "compat configure"
-          cmake --build build\work\compat\b; chk "compat build"
-          cmake --install build\work\compat\b; chk "compat install"
-          # 3) uasak_dump itself. xerces-c is linked by bare name -> put vcpkg lib on LIB;
-          #    the xsd-generated UANodeSet.cxx pulls <xsd/cxx/...> + <xercesc/...> headers
-          #    that uasak's include_directories doesn't cover -> add them to cl's INCLUDE.
-          $env:LIB = "$env:LIB;C:\vcpkg\installed\x64-windows\lib"
-          $env:INCLUDE = "$env:INCLUDE;$env:CODE_SYNTHESYS_XSD_PATH_HEADERS;C:\vcpkg\installed\x64-windows\include"
-          cmake -S . -B build -G Ninja $policy @boost -DXSD_CXX_COMMAND=xsd -DCMAKE_EXE_LINKER_FLAGS="/LIBPATH:C:\vcpkg\installed\x64-windows\lib"; chk "uasak configure"
-          cmake --build build; chk "uasak build"
-          Get-ChildItem -Recurse -Filter 'uasak_dump*' build | Select-Object FullName
-        shell: pwsh
+      - name: Build uasak_dump (o6 dump tool, backend-agnostic)
+        uses: ./.github/actions/build-uasak-dump
       - name: Windows o6 oracle (run + uasak_dump + NodeSet compare)
         run: |
           $ErrorActionPreference='Stop'
@@ -141,6 +83,87 @@ jobs:
           # runtime DLLs (xerces-c / libxml2 / openssl) that both OpcUaServer.exe and
           # uasak_dump.exe load -- this is the first time either actually runs.
           $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin"
+          git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
+          $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
+          python .CI\travis\server_fixture.py --command_to_run uasak_dump
+          if ($LASTEXITCODE -ne 0) { throw "server_fixture / uasak_dump failed (exit $LASTEXITCODE)" }
+          if (-not (Test-Path build\bin\dump.xml)) { throw "uasak_dump produced no build\bin\dump.xml" }
+          python C:\deps\NodeSetTools\nodeset_compare.py .CI\test_cases\test_default_quasar_design\reference_ns2.xml build\bin\dump.xml --ignore_nodeids StandardMetaData
+          if ($LASTEXITCODE -ne 0) { throw "NodeSet compare mismatch (exit $LASTEXITCODE)" }
+        shell: pwsh
+
+  # uasdk × Windows. Builds the Unified Automation UA Toolkit x64 from source
+  # (the source builds for the active MSVC arch; we reuse the x64 setup-quasar-windows
+  # env) and then the uasdk-backed quasar server, and runs the same backend-agnostic
+  # uasak_dump oracle. Gated on HAS_WINDOWS_UASDK + the UASDK_APP_* secrets, because
+  # the commercial SDK bundle lives in a private paris-atlas-dcs release reached via a
+  # GitHub App. The SDK source-build step is a first draft -- its first real CI run
+  # (once the App secret exists) will surface the SDK's Windows cmake specifics
+  # (OpenSSL/LibXml2 discovery, install layout) to iterate, exactly like the o6 chain did.
+  framework-cases-windows-uasdk:
+    if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [default_design]
+        backend: [uasdk]
+        sdk_version: ['1.6.5']
+    env:
+      QUASAR_CMAKE_GENERATOR: Ninja
+      CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
+        uses: ./.github/actions/setup-quasar-windows
+      - name: Mint a GitHub App token for paris-atlas-dcs/uasdk-paris-tools releases
+        id: uasdk-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.UASDK_APP_ID }}
+          private-key: ${{ secrets.UASDK_APP_PRIVATE_KEY }}
+          owner: paris-atlas-dcs
+          repositories: uasdk-paris-tools
+      - name: Build UASDK ${{ matrix.sdk_version }} (x64, from source) via the App
+        env:
+          GH_TOKEN: ${{ steps.uasdk-app.outputs.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          function chk($w){ if ($LASTEXITCODE -ne 0) { throw "$w failed (exit $LASTEXITCODE)" } }
+          gh release download "uasdk-${{ matrix.sdk_version }}-win32-x86-vs2015-src" --repo paris-atlas-dcs/uasdk-paris-tools --pattern '*.exe' --dir C:\uasdk-dl; chk "download SDK bundle"
+          $exe = (Get-ChildItem C:\uasdk-dl -Filter '*.exe' | Select-Object -First 1).FullName
+          # NSIS self-extractor -> 7z is preinstalled on windows runners.
+          7z x -y -oC:\uasdk-src "$exe" > $null; chk "extract SDK"
+          $root = (Get-ChildItem C:\uasdk-src -Recurse -Filter CMakeLists.txt | Sort-Object { $_.FullName.Length } | Select-Object -First 1).Directory.FullName
+          Write-Host "SDK source root: $root"
+          $vi = 'C:\vcpkg\installed\x64-windows'
+          # First-draft build flags (mirror the Linux build.yml, adapted for MSVC/Ninja +
+          # vcpkg OpenSSL/LibXml2). Expect to iterate here on the first gated CI run.
+          cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
+            -DBUILD_EXAMPLES=off -DBUILD_UACLIENTCPP_APP=off -DBUILD_UASERVERCPP_APP=off `
+            -DUASTACK_OPENSSL_COMPAT=1.1.0 -DCMAKE_PREFIX_PATH="$vi" `
+            -DCMAKE_INSTALL_PREFIX=C:\uasdk; chk "uasdk configure"
+          cmake --build C:\uasdk-b; chk "uasdk build"
+          cmake --install C:\uasdk-b; chk "uasdk install"
+          "OPCUA_TOOLKIT_PATH=C:\uasdk" >> $env:GITHUB_ENV
+        shell: pwsh
+      - name: Build uasdk server (uasdk_win_configuration + MSVC compile/link)
+        run: |
+          python quasar.py set_build_config uasdk_win_configuration.cmake
+          python quasar.py build Release
+        shell: pwsh
+      - name: Build uasak_dump (backend-agnostic dump tool)
+        uses: ./.github/actions/build-uasak-dump
+      - name: Windows uasdk oracle (run + uasak_dump + NodeSet compare)
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin;C:\uasdk\bin"
           git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
           $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
           python .CI\travis\server_fixture.py --command_to_run uasak_dump
