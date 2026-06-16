@@ -194,6 +194,36 @@ jobs:
           cmake --install C:\uasdk-b; chk "uasdk install"
           "OPCUA_TOOLKIT_PATH=C:/uasdk" >> $env:GITHUB_ENV
         shell: pwsh
+      - name: Patch CodeSynthesis libxsd for the msxml/Xerces DOMDocument clash
+        run: |
+          $ErrorActionPreference='Stop'
+          # Under BACKEND_UATOOLKIT the SDK platform headers pull the Windows COM chain
+          # (<windows.h> -> urlmon.h -> msxml.h); msxml's global ::DOMDocument coclass collides
+          # with xercesc::DOMDocument inside libxsd's 'using namespace xercesc' blocks
+          # (serialization.txx / parsing-source.txx / serialization-source.txx) -> C2872 in every
+          # quasar TU that mixes UASDK headers with the generated Configuration. msxml.h cannot be
+          # skipped (urlmon.h uses IXMLElement from it), so qualify bare DOMDocument -> xercesc::
+          # DOMDocument in libxsd. Only DOMDocument clashes (DOMElement/DOMNode/... are xercesc-only).
+          # Skip #include lines (must keep <xercesc/dom/DOMDocument.hpp>); the negative look-around
+          # leaves already-qualified names and DOMDocumentFragment/Type untouched. Scoped to this
+          # job, so the shared o6 cell is unaffected.
+          $lx = $env:CODE_SYNTHESYS_XSD_PATH_HEADERS
+          if (-not $lx) { throw "CODE_SYNTHESYS_XSD_PATH_HEADERS not set" }
+          $n = 0
+          Get-ChildItem $lx -Recurse -File | Where-Object { $_.Extension -in '.hxx','.txx','.ixx' } | ForEach-Object {
+            $changed = $false
+            $out = foreach ($ln in (Get-Content $_.FullName)) {
+              if ($ln -match '#\s*include') { $ln }
+              else {
+                $r = $ln -replace '(?<![:\w])DOMDocument(?!\w)', 'xercesc::DOMDocument'
+                if ($r -ne $ln) { $changed = $true }
+                $r
+              }
+            }
+            if ($changed) { Set-Content $_.FullName $out; $n++ }
+          }
+          Write-Host "qualified bare DOMDocument -> xercesc::DOMDocument in $n libxsd files"
+        shell: pwsh
       - name: Build uasdk server (uasdk_win_configuration + MSVC compile/link)
         run: |
           python quasar.py set_build_config uasdk_win_configuration.cmake
