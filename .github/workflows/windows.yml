@@ -138,19 +138,49 @@ jobs:
       - name: Build uasak_dump (+ LogIt + compat) on Windows
         run: |
           $ErrorActionPreference='Stop'
-          # collect nuget boost component libs into one dir for find_package(Boost)
-          New-Item -ItemType Directory -Force C:\deps\boost\libs | Out-Null
-          Get-ChildItem C:\deps\boost -Recurse -Filter 'libboost_*.lib' -File | Copy-Item -Destination C:\deps\boost\libs -Force
+          # LogIt/compat/uasak resolve Boost via find_package(Boost COMPONENTS ...),
+          # which is independent of quasar's path-based BoostSetup. Two adjustments
+          # are needed for the nuget Boost on this runner:
+          #  * Drop the job-inherited vcpkg CMAKE_TOOLCHAIN_FILE -- LogIt's stand-alone
+          #    CMake include()s it and then FATALs because it never sets BOOST_LIBS.
+          #    Without it, LogIt falls back to its own find_package(Boost) path.
+          #  * Steer FindBoost at the nuget vc141 *static* layout: the runner's cl is
+          #    vc143, so FindBoost would otherwise hunt for -vc143 libs nuget never ships.
+          Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
+          # Collect the nuget boost component libs into one dir for FindBoost's
+          # BOOST_LIBRARYDIR. Materialise the source list with @(...) and exclude the
+          # destination, or the lazy -Recurse enumeration walks into libs/ mid-copy and
+          # fails ("cannot overwrite the item ... with itself"). nuget ships x32+x64 and
+          # release+debug; FindBoost picks -x64 release via the hints below.
+          $libDst = 'C:\deps\boost\libs'
+          New-Item -ItemType Directory -Force $libDst | Out-Null
+          $srcLibs = @(Get-ChildItem C:\deps\boost -Recurse -Filter 'libboost_*.lib' -File | Where-Object { $_.DirectoryName -ne $libDst })
+          Write-Host "collecting $($srcLibs.Count) boost libs into $libDst"
+          $srcLibs | Copy-Item -Destination $libDst -Force
+          $boost = @(
+            "-DBOOST_INCLUDEDIR=$env:BOOST_PATH_HEADERS",
+            "-DBOOST_LIBRARYDIR=C:\deps\boost\libs",
+            "-DBoost_USE_STATIC_LIBS=ON",
+            "-DBoost_COMPILER=-vc141",
+            "-DBoost_ARCHITECTURE=-x64",
+            "-DBoost_NO_BOOST_CMAKE=ON"
+          )
           git clone --depth=1 -b windows-msvc https://github.com/parasxos/UaSwissArmyKnife.git uasak
           cd uasak
           New-Item -ItemType Directory -Force build\deploy | Out-Null
+          # 1) LogIt v0.1.3 -> static lib + headers into build/deploy/LogIt
           git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git build\work\LogIt
-          cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"
-          cmake --build build\work\LogIt\b; cmake --install build\work\LogIt\b
+          cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"
+          cmake --build build\work\LogIt\b
+          cmake --install build\work\LogIt\b
+          # 2) open62541-compat (fork) -> static lib + headers into build/deploy/open62541-compat
           git clone -b msvc-cflags-157 https://github.com/parasxos/open62541-compat.git build\work\compat
-          cmake -S build\work\compat -B build\work\compat\b -G Ninja -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON
-          cmake --build build\work\compat\b; cmake --install build\work\compat\b
-          cmake -S . -B build -G Ninja -DBOOST_INCLUDEDIR="$env:BOOST_PATH_HEADERS" -DBOOST_LIBRARYDIR=C:\deps\boost\libs -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows" -DXSD_CXX_COMMAND=xsd
+          cmake -S build\work\compat -B build\work\compat\b -G Ninja -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON
+          cmake --build build\work\compat\b
+          cmake --install build\work\compat\b
+          # 3) uasak_dump itself. xerces-c is linked by bare name -> put vcpkg lib on LIB.
+          $env:LIB = "$env:LIB;C:\vcpkg\installed\x64-windows\lib"
+          cmake -S . -B build -G Ninja @boost -DXSD_CXX_COMMAND=xsd
           cmake --build build
           Get-ChildItem -Recurse -Filter 'uasak_dump*' build | Select-Object FullName
         shell: pwsh
