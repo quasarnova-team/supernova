@@ -92,6 +92,19 @@ int OpcServer::createCertificate (
     UaString      sTraceFile;
     OpcUa_Boolean bDisableFlush    = OpcUa_False;
 
+#if CPP_SDK_MAJOR >= 2
+    // UA SDK 2.0 inserted a ModuleIdFilter out-parameter into getServerTraceSettings. Pass a
+    // default-constructed filter (== no module filtering), preserving the 1.x trace behaviour.
+    ModuleIdFilter moduleIdFilter;
+    serverConfig->getServerTraceSettings(
+            bSdkTraceEnabled,
+            uSdkTraceLevel,
+            moduleIdFilter,
+            uMaxTraceEntries,
+            uMaxBackupFiles,
+            sTraceFile,
+            bDisableFlush);
+#else
     serverConfig->getServerTraceSettings(
             bSdkTraceEnabled,
             uSdkTraceLevel,
@@ -99,6 +112,7 @@ int OpcServer::createCertificate (
             uMaxBackupFiles,
             sTraceFile,
             bDisableFlush);
+#endif
 
     SrvT::initTrace( (UaTrace::TraceLevel)uSdkTraceLevel, uMaxTraceEntries, uMaxBackupFiles, sTraceFile, "");
     SrvT::setTraceActive(true);

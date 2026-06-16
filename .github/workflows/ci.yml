@@ -21,6 +21,9 @@ on:
       versions:
         description: 'Comma-separated uasdk versions (e.g. 1.8.9,2.0.2); empty = all'
         default: ''
+      cases:
+        description: 'Comma-separated case names (e.g. default_design); empty = all'
+        default: ''
 
 permissions:
   contents: read
@@ -46,6 +49,7 @@ jobs:
           QUASAR_CI_BACKENDS: ${{ inputs.backends != '' && inputs.backends || vars.QUASAR_CI_BACKENDS }}
           QUASAR_CI_OS: ${{ inputs.os != '' && inputs.os || vars.QUASAR_CI_OS }}
           QUASAR_CI_VERSIONS: ${{ inputs.versions }}
+          QUASAR_CI_CASES: ${{ inputs.cases }}
           QUASAR_CI_TIERS: ${{ github.event_name == 'schedule' && 'pr,nightly' || github.event_name == 'workflow_dispatch' && inputs.tiers || 'pr' }}
         run: |
           echo "matrix=$(.CI/expand_matrix.py)" >> "$GITHUB_OUTPUT"
