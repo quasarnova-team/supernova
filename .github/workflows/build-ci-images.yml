@@ -60,10 +60,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [alma9, alma10]
-        # PR tier uses 1.7.9; nightly adds 1.8.9 (drop-in, same module layout) and 2.0.2
-        # (major: pki+xmlparser merged into uabasecpp, uamodule folded in -- uasdk-eval.cmake
-        # is layout-aware). All have x86_64 el9/el10 release assets (build.yml dispatched).
-        version: ['1.7.9', '1.8.9', '2.0.2']
+        # PR tier uses 1.7.9; nightly adds 1.6.5, 1.8.9 (1.x drop-ins) and 2.0.2 (major:
+        # pki+xmlparser merged into uabasecpp, uamodule folded in -- uasdk-eval.cmake is
+        # layout-aware). All have x86_64 el9/el10 release assets (build.yml dispatched;
+        # 1.6.5 built with the SelectToPoll + poll_fd_size_8192 patch combination).
+        version: ['1.6.5', '1.7.9', '1.8.9', '2.0.2']
     steps:
       - uses: actions/checkout@v4
       - name: Download pre-built UASDK ${{ matrix.version }} (x86_64, ${{ matrix.os }})
