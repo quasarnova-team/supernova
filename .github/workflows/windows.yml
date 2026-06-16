@@ -71,7 +71,7 @@ jobs:
       - name: Provision Boost (nuget vc141 1.67 libs + full headers)
         run: |
           New-Item -ItemType Directory -Force C:\deps\boost | Out-Null
-          $pkgs='boost','boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141'
+          $pkgs='boost','boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141','boost_regex-vc141'
           foreach($p in $pkgs){ nuget install $p -Version 1.67.0 -OutputDirectory C:\deps\boost -ExcludeVersion -NonInteractive }
           # discover the real Boost include root (the dir containing boost\xpressive\xpressive.hpp)
           $xp = Get-ChildItem C:\deps\boost -Recurse -Filter 'xpressive.hpp' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like '*\boost\xpressive\xpressive.hpp' } | Select-Object -First 1
@@ -134,4 +134,32 @@ jobs:
           Set-Content -Encoding ascii FrameworkInternals\EnabledModules\open62541-compat.tag 'msvc-cflags-157'
           python quasar.py set_build_config open6_win_configuration.cmake
           python quasar.py build Release
+        shell: pwsh
+      - name: Build uasak_dump (+ LogIt + compat) on Windows
+        run: |
+          $ErrorActionPreference='Stop'
+          # collect nuget boost component libs into one dir for find_package(Boost)
+          New-Item -ItemType Directory -Force C:\deps\boost\libs | Out-Null
+          Get-ChildItem C:\deps\boost -Recurse -Filter 'libboost_*.lib' -File | Copy-Item -Destination C:\deps\boost\libs -Force
+          git clone --depth=1 -b windows-msvc https://github.com/parasxos/UaSwissArmyKnife.git uasak
+          cd uasak
+          New-Item -ItemType Directory -Force build\deploy | Out-Null
+          git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git build\work\LogIt
+          cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"
+          cmake --build build\work\LogIt\b; cmake --install build\work\LogIt\b
+          git clone -b msvc-cflags-157 https://github.com/parasxos/open62541-compat.git build\work\compat
+          cmake -S build\work\compat -B build\work\compat\b -G Ninja -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON
+          cmake --build build\work\compat\b; cmake --install build\work\compat\b
+          cmake -S . -B build -G Ninja -DBOOST_INCLUDEDIR="$env:BOOST_PATH_HEADERS" -DBOOST_LIBRARYDIR=C:\deps\boost\libs -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows" -DXSD_CXX_COMMAND=xsd
+          cmake --build build
+          Get-ChildItem -Recurse -Filter 'uasak_dump*' build | Select-Object FullName
+        shell: pwsh
+      - name: Windows o6 oracle (run + uasak_dump + NodeSet compare)
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:Path += ";$PWD\uasak\build"
+          git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
+          $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
+          python .CI\travis\server_fixture.py --command_to_run uasak_dump
+          python C:\deps\NodeSetTools\nodeset_compare.py .CI\test_cases\test_default_quasar_design\reference_ns2.xml build\bin\dump.xml --ignore_nodeids StandardMetaData
         shell: pwsh
