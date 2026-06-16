@@ -146,26 +146,28 @@ jobs:
               "set(COMPILER_DIR vs2019)`n                message(STATUS `"VS unrecognized; defaulting COMPILER_DIR=vs2019 (external third-party provided). `"") | Set-Content $stp.FullName
             Write-Host "patched SetThirdPartyPaths for vc143"
           }
-          # CMake 4.x removed cmake_minimum_required(<3.5); the 1.6.5 SDK declares 2.8.10 in
-          # every subdir/.cmake and CMAKE_POLICY_VERSION_MINIMUM doesn't suppress the per-file
-          # calls -- bump them to 3.5. And add_subdirectory(examples) is unconditional, so
-          # disable it (the examples trip the same old minimums and we don't need them).
-          $cmFiles = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -eq 'CMakeLists.txt' -or $_.Extension -eq '.cmake' }
-          $bumped = 0
-          foreach ($f in $cmFiles) {
-            $c = Get-Content $f.FullName -Raw
-            $n = $c -replace 'cmake_minimum_required\s*\(\s*VERSION\s+2(\.[0-9]+)+', 'cmake_minimum_required(VERSION 3.5'
-            if ($n -ne $c) { Set-Content $f.FullName $n -NoNewline; $bumped++ }
-          }
-          Write-Host "cmake_minimum_required bumped in $bumped files (of $($cmFiles.Count))"
+          # The 1.6.5 SDK declares cmake_minimum_required(VERSION 2.8.x) in every subdir/.cmake,
+          # which CMake 4.x rejects ("compatibility with CMake < 3.5 removed"). CMAKE_POLICY_VERSION_MINIMUM=3.5
+          # DOES downgrade that to a harmless deprecation warning -- but only if it actually takes
+          # effect. The real blocker was the inherited vcpkg CMAKE_TOOLCHAIN_FILE (job env): under
+          # CMake 4 the runner's vcpkg.cmake errors at cmake_policy and aborts toolchain processing
+          # before the override applies, so every per-file minimum re-surfaced as a hard error. We
+          # don't need vcpkg's toolchain here (OpenSSL/libxml2 are passed explicitly below), so we
+          # drop it for the SDK configure (just before cmake) -- then the override does its job.
+          # Validated locally on the extracted bundle with cmake 4.0.3: 2.8.0 -> deprecation warning,
+          # configure proceeds past the whole cmake_minimum_required + FindUaOpenSSL cascade.
+          # add_subdirectory(examples) is unconditional, so comment it out -- we don't build examples.
           (Get-Content "$root\CMakeLists.txt" -Raw) -replace 'add_subdirectory\(examples\)', '# add_subdirectory(examples)  # disabled for CI' | Set-Content "$root\CMakeLists.txt"
-          Write-Host "bumped cmake_minimum_required 2.x->3.5 + disabled examples"
+          Write-Host "disabled examples subdirectory"
           # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
           # /FIconio.h). Dynamic vcpkg libs -> their DLLs go on PATH for the oracle run.
           # 1.6.5's FindUaOpenSSL honors explicit OPENSSL_INCLUDE_DIR/SSL_LIBRARY/CRYPTO_LIBRARY/
           # VERSION (NOT OPENSSL_ROOT_DIR, which is the 2.0.2 convention) -- set those so it uses
           # the vcpkg x64 OpenSSL and skips the bundled win64 search. libxml2 likewise via
           # LIBXML2_INCLUDE_DIR/LIBXML2_LIBRARIES.
+          # Drop the inherited vcpkg toolchain so CMAKE_POLICY_VERSION_MINIMUM=3.5 is honored (see above);
+          # OpenSSL/libxml2 are supplied explicitly via -D and CMAKE_PREFIX_PATH instead.
+          Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
           cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
             -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
             -DBUILD_EXAMPLES=off -DBUILD_UACLIENTCPP_APP=off -DBUILD_UASERVERCPP_APP=off `
