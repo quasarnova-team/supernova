@@ -150,11 +150,14 @@ jobs:
           # every subdir/.cmake and CMAKE_POLICY_VERSION_MINIMUM doesn't suppress the per-file
           # calls -- bump them to 3.5. And add_subdirectory(examples) is unconditional, so
           # disable it (the examples trip the same old minimums and we don't need them).
-          Get-ChildItem $root -Recurse -Include CMakeLists.txt,*.cmake | ForEach-Object {
-            $c = Get-Content $_.FullName -Raw
+          $cmFiles = Get-ChildItem $root -Recurse -File | Where-Object { $_.Name -eq 'CMakeLists.txt' -or $_.Extension -eq '.cmake' }
+          $bumped = 0
+          foreach ($f in $cmFiles) {
+            $c = Get-Content $f.FullName -Raw
             $n = $c -replace 'cmake_minimum_required\s*\(\s*VERSION\s+2(\.[0-9]+)+', 'cmake_minimum_required(VERSION 3.5'
-            if ($n -ne $c) { Set-Content $_.FullName $n }
+            if ($n -ne $c) { Set-Content $f.FullName $n -NoNewline; $bumped++ }
           }
+          Write-Host "cmake_minimum_required bumped in $bumped files (of $($cmFiles.Count))"
           (Get-Content "$root\CMakeLists.txt" -Raw) -replace 'add_subdirectory\(examples\)', '# add_subdirectory(examples)  # disabled for CI' | Set-Content "$root\CMakeLists.txt"
           Write-Host "bumped cmake_minimum_required 2.x->3.5 + disabled examples"
           # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
