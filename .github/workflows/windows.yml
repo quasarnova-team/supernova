@@ -13,13 +13,38 @@ name: CI (Windows Server 2025)
 on:
   push:
     branches: [master, ci-matrix-reshape]
+  schedule:
+    - cron: '0 4 * * *'   # nightly: full Windows case set (ci.yml Linux nightly is 03:00)
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full case set (default for schedule/dispatch; push always runs default_design only)'
+        default: 'true'
 
 permissions:
   contents: read
   packages: read
 
 jobs:
+
+  # Derive the Windows case list by event: push -> just default_design (fast per-commit
+  # smoke); schedule/dispatch -> all manifest cases (full Windows coverage, the Windows
+  # analog of the Linux nightly tier). One source of truth -- the same manifest the Linux
+  # cube uses.
+  windows-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      cases: ${{ steps.gen.outputs.cases }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo 'cases=["default_design"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "cases=$(python3 -c 'import json;print(json.dumps([c["name"] for c in json.load(open(".CI/test_cases/manifest.json"))["cases"]]))')" >> "$GITHUB_OUTPUT"
+          fi
+      - run: echo "Windows cases -> ${{ steps.gen.outputs.cases }}"
 
   framework-invariants-windows:
     runs-on: windows-2025
@@ -44,17 +69,23 @@ jobs:
         shell: pwsh
 
   framework-cases-windows:
+    needs: windows-matrix
     if: ${{ vars.HAS_WINDOWS == 'true' }}
     runs-on: windows-2025
+    name: o6 windows · ${{ matrix.case }}
     strategy:
       fail-fast: false
       matrix:
-        case: [default_design]
-        backend: [o6]
+        case: ${{ fromJSON(needs.windows-matrix.outputs.cases) }}
     env:
       QUASAR_CMAKE_GENERATOR: Ninja
       # vcpkg toolchain so find_package(XercesC/LibXml2/OpenSSL) finds the vcpkg deps
       CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+      # run_test_case.py honours these on Windows (unset on Linux, so its path is unchanged):
+      # the MSVC build config + the open62541-compat fork branch (v1.5.7 + MSVC C-flags guard).
+      QUASAR_BUILD_CONFIG: open6_win_configuration.cmake
+      QUASAR_COMPAT_URL: https://github.com/parasxos/open62541-compat.git
+      QUASAR_COMPAT_TAG: msvc-cflags-157
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,32 +95,21 @@ jobs:
           python-version: '3.x'
       - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
         uses: ./.github/actions/setup-quasar-windows
-      - name: Build o6 server (prepare_build + MSVC compile/link)
-        run: |
-          python quasar.py enable_module open62541-compat v1.5.7
-          # Fetch compat from the parasxos fork branch = v1.5.7 + the MSVC C-flags
-          # guard for the bundled open62541 amalgamation.
-          Set-Content -Encoding ascii FrameworkInternals\EnabledModules\open62541-compat.url 'https://github.com/parasxos/open62541-compat.git'
-          Set-Content -Encoding ascii FrameworkInternals\EnabledModules\open62541-compat.tag 'msvc-cflags-157'
-          python quasar.py set_build_config open6_win_configuration.cmake
-          python quasar.py build Release
-        shell: pwsh
-      - name: Build uasak_dump (o6 dump tool, backend-agnostic)
+      - name: Build uasak_dump (backend-agnostic dump tool)
         uses: ./.github/actions/build-uasak-dump
-      - name: Windows o6 oracle (run + uasak_dump + NodeSet compare)
+      - name: Run case ${{ matrix.case }} (o6) — build + run + oracle
         run: |
           $ErrorActionPreference='Stop'
-          # uasak_dump.exe is on PATH from its build dir; the vcpkg bin dir carries the
-          # runtime DLLs (xerces-c / libxml2 / openssl) that both OpcUaServer.exe and
-          # uasak_dump.exe load -- this is the first time either actually runs.
+          # uasak_dump.exe (built above, in .\uasak\build) + the vcpkg runtime DLLs (xerces-c /
+          # libxml2 / openssl) on PATH; NodeSetTools provides nodeset_compare for the oracle.
+          # run_test_case.py applies the case's design/config/device-sources, builds the o6
+          # server (open6_win_configuration + the MSVC compat fork via the QUASAR_* env above),
+          # runs it, dumps the address space, and judges by the case kind (oracle diff vs smoke).
           $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin"
           git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
           $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
-          python .CI\travis\server_fixture.py --command_to_run uasak_dump
-          if ($LASTEXITCODE -ne 0) { throw "server_fixture / uasak_dump failed (exit $LASTEXITCODE)" }
-          if (-not (Test-Path build\bin\dump.xml)) { throw "uasak_dump produced no build\bin\dump.xml" }
-          python C:\deps\NodeSetTools\nodeset_compare.py .CI\test_cases\test_default_quasar_design\reference_ns2.xml build\bin\dump.xml --ignore_nodeids StandardMetaData
-          if ($LASTEXITCODE -ne 0) { throw "NodeSet compare mismatch (exit $LASTEXITCODE)" }
+          python .CI\run_test_case.py --case ${{ matrix.case }} --backend o6
+          if ($LASTEXITCODE -ne 0) { throw "case ${{ matrix.case }} (o6) failed" }
         shell: pwsh
 
   # uasdk × Windows. Builds the Unified Automation UA Toolkit x64 from source

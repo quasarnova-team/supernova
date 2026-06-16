@@ -45,12 +45,28 @@ def clone_quasar(test_branch):
     os.chdir('quasar')
 
 
+def _write_enabled_module(name, value):
+    path = os.path.join('FrameworkInternals', 'EnabledModules', name)
+    with open(path, 'w') as handle:
+        handle.write(value + '\n')
+
+
 def prepare_opcua_backend(opcua_backend, open62541_compat_branch):
+    # Optional env overrides (used on Windows; unset on Linux so its path is byte-identical):
+    #   QUASAR_BUILD_CONFIG  -- build config to use instead of the per-backend default
+    #   QUASAR_COMPAT_URL/TAG -- repoint the open62541-compat module (e.g. the MSVC fork branch)
+    build_config = os.environ.get('QUASAR_BUILD_CONFIG')
     if opcua_backend == 'o6':
         invoke_and_check(f'{_QUASAR} enable_module open62541-compat {open62541_compat_branch}')
-        invoke_and_check(f'{_QUASAR} set_build_config open62541_config.cmake')
+        compat_url = os.environ.get('QUASAR_COMPAT_URL')
+        compat_tag = os.environ.get('QUASAR_COMPAT_TAG')
+        if compat_url:
+            _write_enabled_module('open62541-compat.url', compat_url)
+        if compat_tag:
+            _write_enabled_module('open62541-compat.tag', compat_tag)
+        invoke_and_check(f'{_QUASAR} set_build_config {build_config or "open62541_config.cmake"}')
     elif opcua_backend == 'uasdk':
-        invoke_and_check(f'{_QUASAR} set_build_config .CI/travis/build_configs/uasdk-eval.cmake')
+        invoke_and_check(f'{_QUASAR} set_build_config {build_config or ".CI/travis/build_configs/uasdk-eval.cmake"}')
     else:
         raise Exception(f"OPCUA backend {opcua_backend} was not recognized")
 
