@@ -91,18 +91,20 @@
     },
     {
       "name": "recurrent_hasobjects",
-      "kind": "smoke",
+      "kind": "oracle",
       "design": "test_recurrent_hasobjects/Design.xml",
       "config": "test_recurrent_hasobjects/config.xml",
       "generate_devices": true,
+      "oracle": "test_recurrent_hasobjects/reference_ns2.xml",
       "backends": ["o6", "uasdk"]
     },
     {
       "name": "single_variable_node",
-      "kind": "smoke",
+      "kind": "oracle",
       "design": "test_single_variable_node/Design.xml",
       "config": "test_single_variable_node/config.xml",
       "generate_devices": true,
+      "oracle": "test_single_variable_node/reference_ns2.xml",
       "backends": ["o6", "uasdk"]
     },
     {
@@ -116,8 +118,9 @@
     },
     {
       "name": "config_restrictions",
-      "kind": "smoke",
+      "kind": "oracle",
       "design": "test_config_restrictions/Design.xml",
+      "oracle": "test_config_restrictions/reference_ns2.xml",
       "backends": ["o6", "uasdk"]
     },
     {
