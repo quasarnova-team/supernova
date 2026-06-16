@@ -76,14 +76,17 @@ def expand(manifest):
     toolkit version, each carrying that version's tier; a backend without toolkit
     entries (o6) yields a single cell at the cell's base tier."""
     default_os = manifest.get('default_os', 'alma9')
+    nightly_oses = manifest.get('nightly_os', [])
     toolkits = manifest.get('toolkits', {})
 
-    def emit(case, backend, os_name, compiler, base_tier):
+    def emit(case, backend, os_name, compiler, base_tier, force_tier=None):
+        # force_tier overrides each toolkit version's own tier (used for nightly_os, so a
+        # PR-tier version like 1.7.9 still lands at nightly on the extended OS).
         versions = toolkits.get(backend)
         if versions:
             return [_cell(manifest, case, backend, os_name, compiler,
-                          tk['version'], tk.get('tier', base_tier)) for tk in versions]
-        return [_cell(manifest, case, backend, os_name, compiler, None, base_tier)]
+                          tk['version'], force_tier or tk.get('tier', base_tier)) for tk in versions]
+        return [_cell(manifest, case, backend, os_name, compiler, None, force_tier or base_tier)]
 
     cells = []
     for case in manifest['cases']:
@@ -93,7 +96,18 @@ def expand(manifest):
         for extra in case.get('extra_cells', []):
             cells += emit(case, extra['backend'], extra.get('os', default_os),
                           extra.get('compiler', 'gcc'), extra.get('tier', case_tier))
-    return cells
+    # Extended OSes (e.g. alma10): mirror the FULL case set at nightly so PR stays lean on
+    # default_os. Forced to nightly regardless of a version's own tier.
+    for os_name in nightly_oses:
+        for case in manifest['cases']:
+            for backend in case.get('backends', []):
+                cells += emit(case, backend, os_name, 'gcc', 'nightly', force_tier='nightly')
+    # De-dup by label: explicit extra_cells (emitted above, first) win, preserving their tier
+    # and compiler (e.g. default_design's PR alma10 smoke + the alma10/clang cell).
+    deduped = {}
+    for c in cells:
+        deduped.setdefault(c['label'], c)
+    return list(deduped.values())
 
 
 def _csv_env(cli_value, env_name):

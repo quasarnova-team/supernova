@@ -2,6 +2,8 @@
   "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices) and its 'kind' (oracle|smoke), which decides how a result is judged. Cells are (case x backend x os x compiler); .CI/expand_matrix.py flattens them into a GitHub Actions strategy.matrix, and run_test_case.py --case reads the SAME file so a case is declared exactly once. The CI image of a cell is ghcr.io/<owner>/quasar-ci:<os>-<backend>[-<toolkit_version>]. Backend coverage is symmetric -- every case runs on both o6 and uasdk now that the backends are at feature parity (a short per-cell exclude would capture any genuine semantic delta; there are none today). PR/nightly tiers and the UASDK-version axis are layered on top.",
 
   "default_os": "alma9",
+  "_nightly_os_doc": "OSes that run the FULL case set (all cases x backends x toolkit versions) at nightly tier. default_os carries the per-case/per-version tiers (PR + nightly); nightly_os mirrors the whole set on the newer EL at nightly so PR stays lean. Explicit per-case extra_cells (e.g. default_design's PR alma10 smoke + clang) are preserved -- they are emitted first and win de-duplication.",
+  "nightly_os": ["alma10"],
 
   "backends": {
     "o6":    { "compat_branch": "v1.5.7" },
