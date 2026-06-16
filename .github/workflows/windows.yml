@@ -208,5 +208,8 @@ jobs:
           git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
           $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
           python .CI\travis\server_fixture.py --command_to_run uasak_dump
+          if ($LASTEXITCODE -ne 0) { throw "server_fixture / uasak_dump failed (exit $LASTEXITCODE)" }
+          if (-not (Test-Path build\bin\dump.xml)) { throw "uasak_dump produced no build\bin\dump.xml" }
           python C:\deps\NodeSetTools\nodeset_compare.py .CI\test_cases\test_default_quasar_design\reference_ns2.xml build\bin\dump.xml --ignore_nodeids StandardMetaData
+          if ($LASTEXITCODE -ne 0) { throw "NodeSet compare mismatch (exit $LASTEXITCODE)" }
         shell: pwsh
