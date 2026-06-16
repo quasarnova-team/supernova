@@ -1,27 +1,34 @@
-# Token-gated UASDK CI image = the token-free o6 image (build deps + the bare
+# Token-free UASDK CI image = the o6 image (build deps + the bare
 # open62541-1.2.2 uasak dump tool + NodeSetTools) PLUS the Unified Automation
-# C++ SDK installed at /opt/uasdk, which uasdk-eval.cmake points at for building
-# the UASDK-backed quasar server. The dump tool stays the o6 uasak: it is an
-# OPC UA *client*, backend-agnostic, and its bare-NodeId output matches the
+# C++ SDK built from source at /opt/uasdk, which uasdk-eval.cmake points at for
+# building the UASDK-backed quasar server. The dump tool stays the o6 uasak: it
+# is an OPC UA *client*, backend-agnostic, and its bare-NodeId output matches the
 # reference NodeSets for both backends.
 #
-# NEEDS the CERN ICS_REPO_DEPS_TOKEN (deps repo) and validation when the token is
-# available -- the UASDK CMake flags below mirror images/alma-10/build-uasdk.sh
-# but target the o6 image's system OpenSSL/libxml2 rather than custom *_HOME.
+# UASDK is commercial -- there is no public download, so quasar can't bundle it.
+# Provide the SOURCE bundle yourself via the UASDK_URL build-arg (a quasar secret;
+# e.g. a presigned URL to a copy you host). This replaces the old CERN
+# ICS_REPO_DEPS_TOKEN path -- no CERN token is used.
+#
+# UASDK_URL may contain {version} and {full} placeholders, substituted from
+# UASDK_VERSION (full expands 2.0.2 -> 2.0.2-675). So a single secret like
+#   https://<host>/uasdk/{full}/uasdkcppbundle-src-linux-v{full}.zip
+# covers all versions if you host versioned paths; or pass a fixed URL for one.
 ARG OWNER=parasxos
 ARG OS_TAG=alma9
 FROM ghcr.io/${OWNER}/quasar-ci:${OS_TAG}-o6
 
 ARG UASDK_VERSION=1.7.9
-ARG ICS_REPO_DEPS_TOKEN
-RUN test -n "$ICS_REPO_DEPS_TOKEN" || { echo "ICS_REPO_DEPS_TOKEN build-arg required for the UASDK image"; exit 1; }
+ARG UASDK_URL
+RUN test -n "$UASDK_URL" || { echo "UASDK_URL build-arg required (token-free uasdk bundle URL; may use {version}/{full})"; exit 1; }
 RUN dnf install -y unzip || true
 RUN set -eux; \
     ver="${UASDK_VERSION}"; \
     case "$ver" in 2.0.2) full="2.0.2-675";; *) full="$ver";; esac; \
-    url="https://ics-deps-repo.web.cern.ch/quasar/uasdk/${full}/uasdkcppbundle-src-linux-v${full}.zip"; \
+    url="$(printf '%s' "$UASDK_URL" | sed -e "s/{version}/${ver}/g" -e "s/{full}/${full}/g")"; \
+    echo "Fetching UASDK ${ver} from ${url}"; \
     mkdir -p /tmp/u; \
-    curl -fsSL -H "PRIVATE-TOKEN: ${ICS_REPO_DEPS_TOKEN}" "$url" -o /tmp/u/uasdk.zip; \
+    curl -fsSL "$url" -o /tmp/u/uasdk.zip; \
     unzip -q /tmp/u/uasdk.zip -d /tmp/u/src; \
     root="$(find /tmp/u/src -name CMakeLists.txt -printf '%d:%h\n' | sort -n | head -1 | cut -d: -f2-)"; \
     cmake -S "$root" -B /tmp/u/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
