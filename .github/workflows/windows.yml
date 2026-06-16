@@ -159,6 +159,14 @@ jobs:
           # add_subdirectory(examples) is unconditional, so comment it out -- we don't build examples.
           (Get-Content "$root\CMakeLists.txt" -Raw) -replace 'add_subdirectory\(examples\)', '# add_subdirectory(examples)  # disabled for CI' | Set-Content "$root\CMakeLists.txt"
           Write-Host "disabled examples subdirectory"
+          # libxml2 >= 2.12 changed xmlGetLastError() to return 'const xmlError *'; the 2019-era SDK
+          # assigns it to a non-const xmlErrorPtr (xmldocument.cpp:643/649) -> C2440 under MSVC with
+          # the modern vcpkg libxml2. Both locals only read ->message/->line, so make them const.
+          $xd = "$root\src\uabase\xmlparser\xmldocument.cpp"
+          if (Test-Path $xd) {
+            (Get-Content $xd -Raw) -replace 'xmlErrorPtr pError = xmlGetLastError\(\);', 'const xmlError* pError = xmlGetLastError();' | Set-Content $xd
+            Write-Host "patched xmldocument.cpp for libxml2 const xmlError*"
+          }
           # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
           # /FIconio.h). Dynamic vcpkg libs -> their DLLs go on PATH for the oracle run.
           # 1.6.5's FindUaOpenSSL honors explicit OPENSSL_INCLUDE_DIR/SSL_LIBRARY/CRYPTO_LIBRARY/
