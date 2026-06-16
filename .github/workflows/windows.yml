@@ -146,6 +146,17 @@ jobs:
               "set(COMPILER_DIR vs2019)`n                message(STATUS `"VS unrecognized; defaulting COMPILER_DIR=vs2019 (external third-party provided). `"") | Set-Content $stp.FullName
             Write-Host "patched SetThirdPartyPaths for vc143"
           }
+          # CMake 4.x removed cmake_minimum_required(<3.5); the 1.6.5 SDK declares 2.8.10 in
+          # every subdir/.cmake and CMAKE_POLICY_VERSION_MINIMUM doesn't suppress the per-file
+          # calls -- bump them to 3.5. And add_subdirectory(examples) is unconditional, so
+          # disable it (the examples trip the same old minimums and we don't need them).
+          Get-ChildItem $root -Recurse -Include CMakeLists.txt,*.cmake | ForEach-Object {
+            $c = Get-Content $_.FullName -Raw
+            $n = $c -replace 'cmake_minimum_required\s*\(\s*VERSION\s+2(\.[0-9]+)+', 'cmake_minimum_required(VERSION 3.5'
+            if ($n -ne $c) { Set-Content $_.FullName $n }
+          }
+          (Get-Content "$root\CMakeLists.txt" -Raw) -replace 'add_subdirectory\(examples\)', '# add_subdirectory(examples)  # disabled for CI' | Set-Content "$root\CMakeLists.txt"
+          Write-Host "bumped cmake_minimum_required 2.x->3.5 + disabled examples"
           # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
           # /FIconio.h). Dynamic vcpkg libs -> their DLLs go on PATH for the oracle run.
           # 1.6.5's FindUaOpenSSL honors explicit OPENSSL_INCLUDE_DIR/SSL_LIBRARY/CRYPTO_LIBRARY/
