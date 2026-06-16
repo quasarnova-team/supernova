@@ -127,14 +127,12 @@ jobs:
   # that token). The SDK source-build step is a first draft -- its first real CI run will
   # surface the SDK's Windows cmake specifics (OpenSSL/LibXml2 discovery, install layout)
   # to iterate, exactly like the o6 chain did.
-  framework-cases-windows-uasdk:
+  windows-uasdk-sdk:
     if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
     runs-on: windows-2025
     strategy:
       fail-fast: false
       matrix:
-        case: [default_design]
-        backend: [uasdk]
         sdk_version: ['1.6.5']
     env:
       QUASAR_CMAKE_GENERATOR: Ninja
@@ -219,7 +217,46 @@ jobs:
             -DCMAKE_PREFIX_PATH="$vi" -DCMAKE_INSTALL_PREFIX=C:/uasdk; chk "uasdk configure"
           cmake --build C:\uasdk-b; chk "uasdk build"
           cmake --install C:\uasdk-b; chk "uasdk install"
-          "OPCUA_TOOLKIT_PATH=C:/uasdk" >> $env:GITHUB_ENV
+        shell: pwsh
+      - name: Upload the built UASDK (consumed once per case by the cells below)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uasdk-win-${{ matrix.sdk_version }}
+          path: C:\uasdk
+
+  # Fan the full case set out over the pre-built SDK: download it, build the uasdk server,
+  # run the same backend-agnostic uasak_dump oracle (run_test_case.py applies the case +
+  # normalizes the open62541>=1.5 quoted NodeIds). The SDK is built ONCE (above), not per case.
+  framework-cases-windows-uasdk:
+    needs: [windows-matrix, windows-uasdk-sdk]
+    if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
+    runs-on: windows-2025
+    name: uasdk windows · ${{ matrix.case }}
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.windows-matrix.outputs.cases) }}
+    env:
+      QUASAR_CMAKE_GENERATOR: Ninja
+      CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+      QUASAR_BUILD_CONFIG: uasdk_win_configuration.cmake
+      OPCUA_TOOLKIT_PATH: C:/uasdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
+        uses: ./.github/actions/setup-quasar-windows
+      - name: Download the pre-built UASDK
+        uses: actions/download-artifact@v4
+        with:
+          name: uasdk-win-1.6.5
+          path: C:\uasdk
+      - name: Verify the SDK artifact is present
+        run: if (-not (Test-Path C:\uasdk\lib)) { throw "UASDK artifact missing C:\uasdk\lib" }
         shell: pwsh
       - name: Patch CodeSynthesis libxsd for the msxml/Xerces DOMDocument clash
         run: |
@@ -251,22 +288,25 @@ jobs:
           }
           Write-Host "qualified bare DOMDocument -> xercesc::DOMDocument in $n libxsd files"
         shell: pwsh
-      - name: Build uasdk server (uasdk_win_configuration + MSVC compile/link)
-        run: |
-          python quasar.py set_build_config uasdk_win_configuration.cmake
-          python quasar.py build Release
-        shell: pwsh
       - name: Build uasak_dump (backend-agnostic dump tool)
         uses: ./.github/actions/build-uasak-dump
-      - name: Windows uasdk oracle (run + uasak_dump + NodeSet compare)
+      - name: Run case ${{ matrix.case }} (uasdk) — build + run + oracle
         run: |
           $ErrorActionPreference='Stop'
+          # uasak_dump (./uasak/build) + vcpkg runtime DLLs + the SDK's bin on PATH; NodeSetTools
+          # for the compare. run_test_case.py applies the case design/config, builds the uasdk
+          # server (uasdk_win_configuration via QUASAR_BUILD_CONFIG + OPCUA_TOOLKIT_PATH), runs it,
+          # dumps, normalizes the open62541>=1.5 quoted NodeIds to bare, and judges by case kind.
           $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin;C:\uasdk\bin"
           git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
           $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
-          python .CI\travis\server_fixture.py --command_to_run uasak_dump
-          if ($LASTEXITCODE -ne 0) { throw "server_fixture / uasak_dump failed (exit $LASTEXITCODE)" }
-          if (-not (Test-Path build\bin\dump.xml)) { throw "uasak_dump produced no build\bin\dump.xml" }
-          python C:\deps\NodeSetTools\nodeset_compare.py .CI\test_cases\test_default_quasar_design\reference_ns2.xml build\bin\dump.xml --ignore_nodeids StandardMetaData
-          if ($LASTEXITCODE -ne 0) { throw "NodeSet compare mismatch (exit $LASTEXITCODE)" }
+          python .CI\run_test_case.py --case ${{ matrix.case }} --backend uasdk
+          if ($LASTEXITCODE -ne 0) { throw "case ${{ matrix.case }} (uasdk) failed" }
         shell: pwsh
+      - name: Upload dump.xml (oracle-compare debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windump-uasdk-${{ matrix.case }}
+          path: build/bin/dump.xml
+          if-no-files-found: ignore
