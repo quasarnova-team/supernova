@@ -103,13 +103,17 @@ def _csv_env(cli_value, env_name):
     return {item.strip() for item in raw.split(',') if item.strip()}
 
 
-def apply_filters(cells, backends, oses, tiers):
+def apply_filters(cells, backends, oses, tiers, versions=None):
     if backends:
         cells = [c for c in cells if c['backend'] in backends]
     if oses:
         cells = [c for c in cells if c['os'] in oses]
     if tiers:
         cells = [c for c in cells if c['tier'] in tiers]
+    if versions:
+        # Only narrows version-bearing (uasdk) cells; version-less cells (o6) pass through,
+        # so this composes with --backends (e.g. uasdk + 1.8.9,2.0.2 -> just those cells).
+        cells = [c for c in cells if (not c['toolkit_version']) or c['toolkit_version'] in versions]
     return cells
 
 
@@ -134,6 +138,7 @@ def main():
     parser.add_argument('--backends')
     parser.add_argument('--os', dest='oses')
     parser.add_argument('--tier', dest='tiers')
+    parser.add_argument('--versions', help='restrict uasdk toolkit versions (e.g. 1.8.9,2.0.2); o6 cells unaffected')
     args = parser.parse_args()
 
     manifest = load()
@@ -153,6 +158,7 @@ def main():
         _csv_env(args.backends, 'QUASAR_CI_BACKENDS'),
         _csv_env(args.oses, 'QUASAR_CI_OS'),
         _csv_env(args.tiers, 'QUASAR_CI_TIERS'),
+        _csv_env(args.versions, 'QUASAR_CI_VERSIONS'),
     )
 
     if args.assert_count is not None and len(cells) != args.assert_count:

@@ -12,6 +12,15 @@ on:
       tiers:
         description: 'Comma-separated tiers to run (pr,nightly)'
         default: 'pr,nightly'
+      backends:
+        description: 'Comma-separated backends (o6,uasdk); empty = repo default'
+        default: ''
+      os:
+        description: 'Comma-separated OS images (alma9,alma10); empty = all'
+        default: ''
+      versions:
+        description: 'Comma-separated uasdk versions (e.g. 1.8.9,2.0.2); empty = all'
+        default: ''
 
 permissions:
   contents: read
@@ -34,8 +43,9 @@ jobs:
           # push/PR -> fast PR tier; nightly schedule -> full cube; dispatch -> chosen tiers.
           # QUASAR_CI_BACKENDS (repo var) filters backends -- set to "o6" on this fork
           # until the token-gated uasdk images are published.
-          QUASAR_CI_BACKENDS: ${{ vars.QUASAR_CI_BACKENDS }}
-          QUASAR_CI_OS: ${{ vars.QUASAR_CI_OS }}
+          QUASAR_CI_BACKENDS: ${{ inputs.backends != '' && inputs.backends || vars.QUASAR_CI_BACKENDS }}
+          QUASAR_CI_OS: ${{ inputs.os != '' && inputs.os || vars.QUASAR_CI_OS }}
+          QUASAR_CI_VERSIONS: ${{ inputs.versions }}
           QUASAR_CI_TIERS: ${{ github.event_name == 'schedule' && 'pr,nightly' || github.event_name == 'workflow_dispatch' && inputs.tiers || 'pr' }}
         run: |
           echo "matrix=$(.CI/expand_matrix.py)" >> "$GITHUB_OUTPUT"
