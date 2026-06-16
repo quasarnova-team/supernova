@@ -60,7 +60,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [alma9, alma10]
-        version: ['1.7.9', '1.6.5', '2.0.2']
+        # 1.7.9 first (PR-tier; artifacts ready). 1.6.5 + 2.0.2 added back once their
+        # x86_64 el9/el10 release assets are built (build.yml dispatched for them).
+        version: ['1.7.9']
     steps:
       - uses: actions/checkout@v4
       - name: Download pre-built UASDK ${{ matrix.version }} (x86_64, ${{ matrix.os }})
