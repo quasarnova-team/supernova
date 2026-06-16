@@ -154,7 +154,9 @@ def _csv_env(cli_value, env_name):
     return {item.strip() for item in raw.split(',') if item.strip()}
 
 
-def apply_filters(cells, backends, oses, tiers, versions=None, cases=None):
+def apply_filters(cells, backends, oses, tiers, versions=None, cases=None, arches=None):
+    if arches:
+        cells = [c for c in cells if c['arch'] in arches]
     if cases:
         cells = [c for c in cells if c['case'] in cases]
     if backends:
@@ -193,6 +195,7 @@ def main():
     parser.add_argument('--tier', dest='tiers')
     parser.add_argument('--versions', help='restrict uasdk toolkit versions (e.g. 1.8.9,2.0.2); o6 cells unaffected')
     parser.add_argument('--cases', help='restrict to these case names (e.g. default_design)')
+    parser.add_argument('--arches', help='restrict to these CPU arches (x86_64,arm64)')
     args = parser.parse_args()
 
     manifest = load()
@@ -214,6 +217,7 @@ def main():
         _csv_env(args.tiers, 'QUASAR_CI_TIERS'),
         _csv_env(args.versions, 'QUASAR_CI_VERSIONS'),
         _csv_env(args.cases, 'QUASAR_CI_CASES'),
+        _csv_env(args.arches, 'QUASAR_CI_ARCHES'),
     )
 
     if args.assert_count is not None and len(cells) != args.assert_count:

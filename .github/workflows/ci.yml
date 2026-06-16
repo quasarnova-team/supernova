@@ -24,6 +24,9 @@ on:
       cases:
         description: 'Comma-separated case names (e.g. default_design); empty = all'
         default: ''
+      arches:
+        description: 'Comma-separated CPU arches (x86_64,arm64); empty = all'
+        default: ''
 
 permissions:
   contents: read
@@ -50,6 +53,7 @@ jobs:
           QUASAR_CI_OS: ${{ inputs.os != '' && inputs.os || vars.QUASAR_CI_OS }}
           QUASAR_CI_VERSIONS: ${{ inputs.versions }}
           QUASAR_CI_CASES: ${{ inputs.cases }}
+          QUASAR_CI_ARCHES: ${{ inputs.arches }}
           QUASAR_CI_TIERS: ${{ github.event_name == 'schedule' && 'pr,nightly' || github.event_name == 'workflow_dispatch' && inputs.tiers || 'pr' }}
         run: |
           echo "matrix=$(.CI/expand_matrix.py)" >> "$GITHUB_OUTPUT"
