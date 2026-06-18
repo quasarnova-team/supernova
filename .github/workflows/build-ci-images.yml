@@ -51,7 +51,7 @@ jobs:
   # the UASDK_DL_TOKEN secret (a token with Contents:read on uasdk-paris-tools -- an App
   # token or a fine-grained PAT). Enable with repo var HAS_UASDK=true + secret
   # UASDK_DL_TOKEN. Needs x86_64 el9+el10 release assets to exist for each version
-  # (dispatch build.yml). PR tier needs 1.7.9; nightly adds 1.6.5 + 2.0.2.
+  # (dispatch build.yml). PR tier needs 1.8.9; nightly adds 1.6.5 + 1.7.9 + 2.0.2.
   build-uasdk:
     needs: build
     if: ${{ vars.HAS_UASDK == 'true' }}
@@ -60,7 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [alma9, alma10]
-        # PR tier uses 1.7.9; nightly adds 1.6.5, 1.8.9 (1.x drop-ins) and 2.0.2 (major:
+        # PR tier uses 1.8.9 (1.x drop-in); nightly adds 1.6.5, 1.7.9 (1.x) and 2.0.2 (major:
         # pki+xmlparser merged into uabasecpp, uamodule folded in -- uasdk-eval.cmake is
         # layout-aware). All have x86_64 el9/el10 release assets (build.yml dispatched;
         # 1.6.5 built with the SelectToPoll + poll_fd_size_8192 patch combination).
@@ -123,7 +123,8 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.tag }}
           cache-to: type=gha,mode=max,scope=${{ matrix.tag }}
 
-  # arm64 uasdk image: FROM the arm64 o6 image + the aarch64 SDK tarball (1.7.9, el9).
+  # arm64 uasdk image: FROM the arm64 o6 image + the aarch64 SDK tarball (1.8.9, el9).
+  # 1.8.9 is the PR-default uasdk version; the nightly arm64 cells track it (manifest nightly_arches).
   build-uasdk-arm64:
     needs: build-arm64
     if: ${{ vars.HAS_UASDK == 'true' }}
@@ -132,7 +133,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [alma9]
-        version: ['1.7.9']
+        version: ['1.8.9']
     steps:
       - uses: actions/checkout@v4
       - name: Download pre-built UASDK ${{ matrix.version }} (aarch64, ${{ matrix.os }})
