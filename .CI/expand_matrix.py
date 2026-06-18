@@ -87,32 +87,62 @@ def expand(manifest):
     default_os = manifest.get('default_os', 'alma9')
     nightly_oses = manifest.get('nightly_os', [])
     toolkits = manifest.get('toolkits', {})
+    # Representative subset run on NON-default axes (extended OS, extra compiler, extra arch, and
+    # non-default toolkit versions): those axes are framework/SDK/platform-level deltas whose
+    # pass/fail signal is case-INDEPENDENT, so only a few broad-surface cases need re-run there.
+    # Empty/absent => keep the full case set (current behaviour).
+    representative = set(manifest.get('representative_cases', []))
+    # PR-tier (default) uasdk versions: these keep the FULL case set on default_os. Non-default
+    # (nightly) versions are a framework/SDK-level delta and only re-run the representative cases.
+    pr_uasdk_versions = {tk['version'] for tk in toolkits.get('uasdk', [])
+                         if tk.get('tier', 'pr') == 'pr'}
 
-    def emit(case, backend, os_name, compiler, base_tier, force_tier=None):
+    def in_rep(case):
+        return (not representative) or case['name'] in representative
+
+    def emit(case, backend, os_name, compiler, base_tier, force_tier=None, only_versions=None):
         # force_tier overrides each toolkit version's own tier (used for nightly_os, so a
         # PR-tier version like 1.7.9 still lands at nightly on the extended OS).
+        # only_versions (set) restricts which uasdk toolkit versions are emitted here.
         versions = toolkits.get(backend)
         if versions:
             return [_cell(manifest, case, backend, os_name, compiler,
-                          tk['version'], force_tier or tk.get('tier', base_tier)) for tk in versions]
+                          tk['version'], force_tier or tk.get('tier', base_tier))
+                    for tk in versions if not only_versions or tk['version'] in only_versions]
         return [_cell(manifest, case, backend, os_name, compiler, None, force_tier or base_tier)]
 
     cells = []
     for case in manifest['cases']:
         case_tier = case.get('tier', 'pr')
         for backend in case.get('backends', []):
-            cells += emit(case, backend, default_os, 'gcc', case_tier)
+            # On default_os, a non-representative case runs only the PR-tier (default) uasdk
+            # version; non-default versions re-run just the representative cases. o6 (no toolkit
+            # versions) is unaffected and always runs every case on default_os.
+            only_v = None if (in_rep(case) or representative == set()) else pr_uasdk_versions
+            cells += emit(case, backend, default_os, 'gcc', case_tier, only_versions=only_v)
         for extra in case.get('extra_cells', []):
+            # A per-cell 'version' pins this extra_cell to one uasdk toolkit version instead of
+            # fanning out to all of them (keeps a single alma10 smoke at the default version).
+            pin = {extra['version']} if extra.get('version') else None
             cells += emit(case, extra['backend'], extra.get('os', default_os),
-                          extra.get('compiler', 'gcc'), extra.get('tier', case_tier))
-    # Extended OSes (e.g. alma10): mirror the FULL case set at nightly so PR stays lean on
-    # default_os. Forced to nightly regardless of a version's own tier.
-    for os_name in nightly_oses:
+                          extra.get('compiler', 'gcc'), extra.get('tier', case_tier),
+                          only_versions=pin)
+    # Extended OSes (e.g. alma10): mirror the case set at nightly so PR stays lean on default_os.
+    # An entry may be a bare string "alma10" (full version sweep, legacy) OR
+    # {"os": "alma10", "versions": ["1.8.9"]} to restrict which uasdk versions are mirrored there.
+    # representative_cases (if set) restricts the case set on this extended axis.
+    for entry in nightly_oses:
+        os_name = entry['os'] if isinstance(entry, dict) else entry
+        only_v = set(entry.get('versions', [])) if isinstance(entry, dict) else None
         for case in manifest['cases']:
+            if not in_rep(case):
+                continue
             for backend in case.get('backends', []):
-                cells += emit(case, backend, os_name, 'gcc', 'nightly', force_tier='nightly')
+                cells += emit(case, backend, os_name, 'gcc', 'nightly',
+                               force_tier='nightly', only_versions=only_v)
     # Extra compilers (e.g. clang): run the FULL case set with that compiler at nightly, on the
-    # listed backends/os. Compiler-portability coverage beyond the default gcc.
+    # listed backends/os. Deliberately NOT narrowed by representative_cases -- a compiler can break
+    # on case-specific generated C++ (templates/headers), so every case is compiled under it.
     for nc in manifest.get('nightly_compilers', []):
         for case in manifest['cases']:
             for backend in nc.get('backends', []):
@@ -128,6 +158,8 @@ def expand(manifest):
         keep_cases = set(na.get('cases', []))
         for case in manifest['cases']:
             if keep_cases and case['name'] not in keep_cases:
+                continue
+            if not in_rep(case):
                 continue
             for backend in case.get('backends', []):
                 versions = toolkits.get(backend)
