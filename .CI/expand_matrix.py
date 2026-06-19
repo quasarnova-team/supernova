@@ -127,16 +127,15 @@ def expand(manifest):
             cells += emit(case, extra['backend'], extra.get('os', default_os),
                           extra.get('compiler', 'gcc'), extra.get('tier', case_tier),
                           only_versions=pin)
-    # Extended OSes (e.g. alma10): mirror the case set at nightly so PR stays lean on default_os.
-    # An entry may be a bare string "alma10" (full version sweep, legacy) OR
-    # {"os": "alma10", "versions": ["1.8.9"]} to restrict which uasdk versions are mirrored there.
-    # representative_cases (if set) restricts the case set on this extended axis.
+    # Extended OSes (e.g. alma10): mirror the FULL case set at nightly so PR stays lean on default_os.
+    # A secondary EL major is a first-class platform target, so EVERY case runs there -- deliberately
+    # NOT narrowed by representative_cases (unlike arm64 / the alt toolkit versions). An entry may be a
+    # bare string "alma10" (full version sweep, legacy) OR {"os": "alma10", "versions": ["1.8.9"]} to
+    # mirror the full case set against only the listed uasdk versions on that EL.
     for entry in nightly_oses:
         os_name = entry['os'] if isinstance(entry, dict) else entry
         only_v = set(entry.get('versions', [])) if isinstance(entry, dict) else None
         for case in manifest['cases']:
-            if not in_rep(case):
-                continue
             for backend in case.get('backends', []):
                 cells += emit(case, backend, os_name, 'gcc', 'nightly',
                                force_tier='nightly', only_versions=only_v)
