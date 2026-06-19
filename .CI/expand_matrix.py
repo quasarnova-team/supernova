@@ -102,7 +102,7 @@ def expand(manifest):
 
     def emit(case, backend, os_name, compiler, base_tier, force_tier=None, only_versions=None):
         # force_tier overrides each toolkit version's own tier (used for nightly_os, so a
-        # PR-tier version like 1.7.9 still lands at nightly on the extended OS).
+        # PR-tier version like 1.8.9 still lands at nightly on the extended OS).
         # only_versions (set) restricts which uasdk toolkit versions are emitted here.
         versions = toolkits.get(backend)
         if versions:

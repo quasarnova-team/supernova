@@ -34,7 +34,7 @@
 
 SET( OPCUA_TOOLKIT_PATH /opt/uasdk )
 
-# The installed UA SDK module set differs across majors. 1.x (1.6.5/1.7.9/1.8.9) ships
+# The installed UA SDK module set differs across majors. 1.x (1.6.5/1.8.9) ships
 # uamodule + separate uapkicpp/xmlparsercpp; 2.0.x folds pki + xmlparser into uabasecpp,
 # drops uamodule, and adds uabasedi/uaserverdi + an alternative embeddedstack (NOT linked --
 # it conflicts with uastack). Detect the layout from a 1.x-only lib and pick the right
