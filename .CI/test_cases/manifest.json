@@ -8,9 +8,10 @@
   "nightly_compilers": [
     { "compiler": "clang", "os": "alma10", "backends": ["o6"] }
   ],
-  "_nightly_arches_doc": "Extra CPU architectures run at nightly on native GitHub arm64 runners (ubuntu-24.04-arm, free for public repos) with arch-tagged images (e.g. quasar-ci:alma9-o6-arm64). 'versions' limits which uasdk toolkit versions get an arch image built; o6 + the default (PR-tier) uasdk version on alma9 is the representative aarch64 set (the user ships aarch64 SDK builds). representative_cases (if set) further restricts the case set -- arch is a platform-level delta. Same gcc/libstdc++ family as x86_64, so the framework/compat/uasak builds are portable.",
+  "_nightly_arches_doc": "Extra CPU architectures run at nightly on native GitHub arm64 runners (ubuntu-24.04-arm, free for public repos) with arch-tagged images (e.g. quasar-ci:alma10-o6-arm64). 'versions' limits which uasdk toolkit versions get an arch image built; o6 + the default (PR-tier) uasdk version on both EL majors (alma9 + alma10) is the representative aarch64 set (the user ships aarch64 SDK builds, incl. el10). representative_cases (if set) further restricts the case set -- arch is a platform-level delta. Same gcc/libstdc++ family as x86_64, so the framework/compat/uasak builds are portable.",
   "nightly_arches": [
-    { "arch": "arm64", "os": "alma9", "versions": ["1.8.9"] }
+    { "arch": "arm64", "os": "alma9",  "versions": ["1.8.9"] },
+    { "arch": "arm64", "os": "alma10", "versions": ["1.8.9"] }
   ],
 
   "_representative_cases_doc": "Broad-surface cases re-run on the case-INDEPENDENT secondary axes -- the alt arch (arm64) and the non-default/nightly uasdk versions. Those deltas are platform/SDK-level, so the full per-case sweep stays on default_os + the default uasdk version and only this subset mirrors onto them. Chosen to exercise the distinct codegen/runtime surfaces (plain + async methods, cache + source variables). NOTE: the extended OS (nightly_os, e.g. alma10) and the alt compiler (nightly_compilers, clang) are deliberately NOT narrowed by this list -- alma10 is a first-class platform target and a compiler can fail on case-specific generated code, so both keep the full case set. Remove this key (or set []) to run the full case set on every axis (incl. arm64 + alt versions).",

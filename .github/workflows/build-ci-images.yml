@@ -97,15 +97,17 @@ jobs:
             UASDK_TARBALL=${{ env.UASDK_TARBALL }}
 
   # Native arm64 images on the free GitHub ubuntu-24.04-arm runners (built natively, not via
-  # QEMU, so the compat-from-source build is fast). alma9 only -- the representative aarch64
-  # set for the nightly arch cells. arm64 Linux is the same gcc/libstdc++ family as x86_64.
+  # QEMU, so the compat-from-source build is fast). Both EL majors (alma9 + alma10) -- the
+  # representative aarch64 set for the nightly arch cells. arm64 Linux is the same gcc/libstdc++
+  # family as x86_64. (cern/alma10-base must publish an arm64 manifest; AlmaLinux 10 supports it.)
   build-arm64:
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { tag: alma9-o6-arm64, dockerfile: .CI/docker/Dockerfile.alma9-o6 }
+          - { tag: alma9-o6-arm64,  dockerfile: .CI/docker/Dockerfile.alma9-o6 }
+          - { tag: alma10-o6-arm64, dockerfile: .CI/docker/Dockerfile.alma10-o6 }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -123,7 +125,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.tag }}
           cache-to: type=gha,mode=max,scope=${{ matrix.tag }}
 
-  # arm64 uasdk image: FROM the arm64 o6 image + the aarch64 SDK tarball (1.8.9, el9).
+  # arm64 uasdk image: FROM the arm64 o6 image + the aarch64 SDK tarball (1.8.9, el9 + el10).
   # 1.8.9 is the PR-default uasdk version; the nightly arm64 cells track it (manifest nightly_arches).
   build-uasdk-arm64:
     needs: build-arm64
@@ -132,7 +134,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [alma9]
+        os: [alma9, alma10]
         version: ['1.8.9']
     steps:
       - uses: actions/checkout@v4
