@@ -85,6 +85,10 @@ def expand(manifest):
     toolkit version, each carrying that version's tier; a backend without toolkit
     entries (o6) yields a single cell at the cell's base tier."""
     default_os = manifest.get('default_os', 'alma9')
+    # Arches the PRIMARY OS (default_os) is fully tested on at PR. x86_64 is the baseline; listing
+    # arm64 here gives the full per-case PR sweep on native arm too (only the PR-default uasdk
+    # version, since that is the only version with arch images). Defaults to x86_64-only.
+    default_arches = manifest.get('default_arches', ['x86_64'])
     nightly_oses = manifest.get('nightly_os', [])
     toolkits = manifest.get('toolkits', {})
     # Representative subset run on NON-default axes (extended OS, extra compiler, extra arch, and
@@ -100,26 +104,33 @@ def expand(manifest):
     def in_rep(case):
         return (not representative) or case['name'] in representative
 
-    def emit(case, backend, os_name, compiler, base_tier, force_tier=None, only_versions=None):
+    def emit(case, backend, os_name, compiler, base_tier, force_tier=None, only_versions=None, arch='x86_64'):
         # force_tier overrides each toolkit version's own tier (used for nightly_os, so a
         # PR-tier version like 1.8.9 still lands at nightly on the extended OS).
         # only_versions (set) restricts which uasdk toolkit versions are emitted here.
         versions = toolkits.get(backend)
         if versions:
             return [_cell(manifest, case, backend, os_name, compiler,
-                          tk['version'], force_tier or tk.get('tier', base_tier))
+                          tk['version'], force_tier or tk.get('tier', base_tier), arch=arch)
                     for tk in versions if not only_versions or tk['version'] in only_versions]
-        return [_cell(manifest, case, backend, os_name, compiler, None, force_tier or base_tier)]
+        return [_cell(manifest, case, backend, os_name, compiler, None, force_tier or base_tier, arch=arch)]
 
     cells = []
     for case in manifest['cases']:
         case_tier = case.get('tier', 'pr')
         for backend in case.get('backends', []):
-            # On default_os, a non-representative case runs only the PR-tier (default) uasdk
-            # version; non-default versions re-run just the representative cases. o6 (no toolkit
-            # versions) is unaffected and always runs every case on default_os.
-            only_v = None if (in_rep(case) or representative == set()) else pr_uasdk_versions
-            cells += emit(case, backend, default_os, 'gcc', case_tier, only_versions=only_v)
+            for arch in default_arches:
+                # default_os x86_64: a non-representative case runs only the PR-tier (default)
+                # uasdk version; non-default versions re-run just the representative cases. o6 (no
+                # toolkit versions) always runs every case. On an alt default arch (e.g. arm64)
+                # only the PR-default version has an arch image, so every case runs there against
+                # just that version (o6 + uasdk-<default>) -- the full per-case set, PR tier.
+                if arch == 'x86_64':
+                    only_v = None if (in_rep(case) or representative == set()) else pr_uasdk_versions
+                else:
+                    only_v = pr_uasdk_versions
+                cells += emit(case, backend, default_os, 'gcc', case_tier,
+                              only_versions=only_v, arch=arch)
         for extra in case.get('extra_cells', []):
             # A per-cell 'version' pins this extra_cell to one uasdk toolkit version instead of
             # fanning out to all of them (keeps a single alma10 smoke at the default version).
