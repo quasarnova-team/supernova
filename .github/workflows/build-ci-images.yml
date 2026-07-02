@@ -51,7 +51,7 @@ jobs:
   # the UASDK_DL_TOKEN secret (a token with Contents:read on uasdk-paris-tools -- an App
   # token or a fine-grained PAT). Enable with repo var HAS_UASDK=true + secret
   # UASDK_DL_TOKEN. Needs x86_64 el9+el10 release assets to exist for each version
-  # (dispatch build.yml). PR tier needs 1.8.9; nightly adds 1.6.5 + 2.0.2.
+  # (dispatch build.yml). PR tier needs 1.8.9; nightly adds 1.6.5 + 2.0.3.
   build-uasdk:
     needs: build
     if: ${{ vars.HAS_UASDK == 'true' }}
@@ -60,12 +60,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [alma9, alma10]
-        # PR tier uses 1.8.9 (1.x drop-in); nightly adds 1.6.5 (early 1.x) and 2.0.2 (major:
+        # PR tier uses 1.8.9 (1.x drop-in); nightly adds 1.6.5 (early 1.x) and 2.0.3 (2.x:
         # pki+xmlparser merged into uabasecpp, uamodule folded in -- uasdk-eval.cmake is
-        # layout-aware). All have x86_64 el9/el10 release assets (build.yml dispatched;
-        # 1.6.5 built with the SelectToPoll + poll_fd_size_8192 patch combination;
-        # 2.0.3 = 2.0.2 + High-severity UaStack DoS fix (UNIFIED-SEC-2026-0001)).
-        version: ['1.6.5', '1.8.9', '2.0.2', '2.0.3']
+        # layout-aware; supersedes 2.0.2, carrying the High-severity UaStack DoS fix
+        # UNIFIED-SEC-2026-0001). All have x86_64 el9/el10 release assets (build.yml
+        # dispatched; 1.6.5 built with SelectToPoll + poll_fd_size_8192 patches).
+        version: ['1.6.5', '1.8.9', '2.0.3']
     steps:
       - uses: actions/checkout@v4
       - name: Download pre-built UASDK ${{ matrix.version }} (x86_64, ${{ matrix.os }})
