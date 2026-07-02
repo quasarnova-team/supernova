@@ -44,7 +44,7 @@ jobs:
 
   # UASDK images (FROM the o6 images + the pre-built UASDK at /opt/uasdk). UASDK is
   # commercial (no public download). Instead of the CERN ICS token, the SDK comes
-  # from your own pipeline: paris-atlas-dcs/uasdk-paris-tools build.yml builds the SDK
+  # from a private release mirror: an external pipeline builds the SDK
   # from private source + patches and publishes static-lib tarballs as GitHub Releases
   # tagged uasdk-<ver>-<arch>-el<N>. This job downloads the matching x86_64 asset using
   # the UASDK_DL_TOKEN secret (a token with Contents:read on uasdk-paris-tools -- an App
@@ -74,7 +74,7 @@ jobs:
           el="${{ matrix.os }}"; el="${el#alma}"
           tag="uasdk-${{ matrix.version }}-x86_64-el${el}"
           mkdir -p .CI/docker/_uasdk
-          gh release download "$tag" --repo paris-atlas-dcs/uasdk-paris-tools --pattern 'uasdk-*.tar.gz' --dir .CI/docker/_uasdk
+          gh release download "$tag" --repo parasxos/uasdk-releases --pattern 'uasdk-*.tar.gz' --dir .CI/docker/_uasdk
           tb="$(ls .CI/docker/_uasdk/uasdk-*.tar.gz | head -1)"
           test -n "$tb" || { echo "no uasdk tarball in release $tag"; exit 1; }
           echo "UASDK_TARBALL=$tb" >> "$GITHUB_ENV"
@@ -145,7 +145,7 @@ jobs:
           el="${{ matrix.os }}"; el="${el#alma}"
           tag="uasdk-${{ matrix.version }}-aarch64-el${el}"
           mkdir -p .CI/docker/_uasdk
-          gh release download "$tag" --repo paris-atlas-dcs/uasdk-paris-tools --pattern 'uasdk-*.tar.gz' --dir .CI/docker/_uasdk
+          gh release download "$tag" --repo parasxos/uasdk-releases --pattern 'uasdk-*.tar.gz' --dir .CI/docker/_uasdk
           tb="$(ls .CI/docker/_uasdk/uasdk-*.tar.gz | head -1)"
           test -n "$tb" || { echo "no uasdk tarball in release $tag"; exit 1; }
           echo "UASDK_TARBALL=$tb" >> "$GITHUB_ENV"

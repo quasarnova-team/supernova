@@ -161,7 +161,7 @@ jobs:
   # source builds for the active MSVC arch; we reuse the x64 setup-quasar-windows
   # env), installs it, and uploads one artifact per version for the case cells
   # below. Gated on HAS_WINDOWS_UASDK + the UASDK_DL_TOKEN secret, because the
-  # commercial SDK bundles live in private paris-atlas-dcs releases (downloaded
+  # commercial SDK bundles live in a private release mirror (downloaded
   # with that token). Per-version deltas (bundle format, OpenSSL injection, source
   # patches) are handled inline in the build step; the known 1.6.5 fix chain is
   # kept and made version-tolerant (each patch no-ops when its pattern is absent).
@@ -202,7 +202,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           function chk($w){ if ($LASTEXITCODE -ne 0) { throw "$w failed (exit $LASTEXITCODE)" } }
-          gh release download "${{ matrix.release_tag }}" --repo paris-atlas-dcs/uasdk-paris-tools --pattern "${{ matrix.asset_pattern }}" --dir C:\uasdk-dl; chk "download SDK bundle"
+          gh release download "${{ matrix.release_tag }}" --repo parasxos/uasdk-releases --pattern "${{ matrix.asset_pattern }}" --dir C:\uasdk-dl; chk "download SDK bundle"
           $bundle = (Get-ChildItem C:\uasdk-dl | Select-Object -First 1).FullName
           # 1.6.5 ships as an NSIS self-extractor (.exe); 1.8.9/2.0.3 are plain .zip bundles
           # (top dir uasdkcppbundle-src-windows-v<ver>-<build>/). 7z (preinstalled on windows

@@ -6,7 +6,7 @@
 #
 # UASDK is commercial -- there is no public download, so quasar can't bundle or
 # rebuild it here. The build-uasdk job (build-ci-images.yml) downloads the
-# matching pre-built tarball from paris-atlas-dcs/uasdk-paris-tools GitHub
+# matching pre-built tarball from a private GitHub release mirror's
 # Releases -- authenticated by a GitHub App, NOT the CERN ICS_REPO_DEPS_TOKEN --
 # and drops it in the build context as UASDK_TARBALL; this image just extracts it.
 # The tarball is the SDK install tree (`uasdk-<ver>-gcc<gccver>/{include,lib,...}`),
