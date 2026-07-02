@@ -257,6 +257,11 @@ jobs:
             $sslArgs = @("-DOPENSSL_ROOT_DIR=$vi")
           } else {
             $sslArgs = @("-DOPENSSL_INCLUDE_DIR=$vi/include", "-DOPENSSL_SSL_LIBRARY=$vi/lib/libssl.lib", "-DOPENSSL_CRYPTO_LIBRARY=$vi/lib/libcrypto.lib", "-DOPENSSL_VERSION=3.5.5")
+            # 1.8.9's install_openssl_* macros read OPENSSL_MSVC_ARCH_SUFFIX, normally set by
+            # the bundled-third-party search that the explicit-var escape hatch skips ->
+            # empty var in if(... EQUAL "32") is a hard error (FindUaOpenSSL.cmake:341).
+            # x64 selects .../bin/libcrypto-3-x64.dll, which vcpkg's layout provides.
+            $sslArgs += "-DOPENSSL_MSVC_ARCH_SUFFIX=64"
           }
           cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM="3.5" `
             -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
