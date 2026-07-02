@@ -5,56 +5,100 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  schedule:
+    - cron: '0 3 * * *'   # nightly: full cube (all tiers x all toolkit versions)
+  workflow_dispatch:
+    inputs:
+      tiers:
+        description: 'Comma-separated tiers to run (pr,nightly)'
+        default: 'pr,nightly'
+      backends:
+        description: 'Comma-separated backends (o6,uasdk); empty = repo default'
+        default: ''
+      os:
+        description: 'Comma-separated OS images (alma9,alma10); empty = all'
+        default: ''
+      versions:
+        description: 'Comma-separated uasdk versions (e.g. 1.8.9,2.0.2); empty = all'
+        default: ''
+      cases:
+        description: 'Comma-separated case names (e.g. default_design); empty = all'
+        default: ''
+      arches:
+        description: 'Comma-separated CPU arches (x86_64,arm64); empty = all'
+        default: ''
 
-env:
-  OPEN62541_COMPAT_VERSION: v1.5.7
+permissions:
+  contents: read
+  packages: read
 
 jobs:
 
-  # ── open62541 tests ──────────────────────────────────────────────────
-
-  o6_default_design:
+  # ── derive the test matrix from the single-source-of-truth manifest ──────
+  # .CI/test_cases/manifest.json -> {case x backend x os x compiler} cells.
+  # Optional repo variables narrow the set (e.g. QUASAR_CI_BACKENDS=o6 while
+  # the uasdk images are not yet published under this owner).
+  matrix:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --compare_with_nodeset .CI/test_cases/test_default_quasar_design/reference_ns2.xml
+      - id: gen
+        env:
+          # push/PR -> fast PR tier; nightly schedule -> full cube; dispatch -> chosen tiers.
+          # QUASAR_CI_BACKENDS (repo var) filters backends -- set to "o6" on this fork
+          # until the token-gated uasdk images are published.
+          QUASAR_CI_BACKENDS: ${{ inputs.backends != '' && inputs.backends || vars.QUASAR_CI_BACKENDS }}
+          QUASAR_CI_OS: ${{ inputs.os != '' && inputs.os || vars.QUASAR_CI_OS }}
+          QUASAR_CI_VERSIONS: ${{ inputs.versions }}
+          QUASAR_CI_CASES: ${{ inputs.cases }}
+          QUASAR_CI_ARCHES: ${{ inputs.arches }}
+          QUASAR_CI_TIERS: ${{ github.event_name == 'schedule' && 'pr,nightly' || github.event_name == 'workflow_dispatch' && inputs.tiers || 'pr' }}
+        run: |
+          echo "matrix=$(.CI/expand_matrix.py)" >> "$GITHUB_OUTPUT"
+          .CI/expand_matrix.py --print
 
-  o6_clang_default_design:
-    runs-on: ubuntu-latest
+  # ── the cube: every test case on every selected backend/os/compiler ──────
+  framework-cases:
+    needs: matrix
+    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
     container:
-      image: ghcr.io/quasar-team/quasar-uasdk:alma10
+      image: ghcr.io/${{ github.repository_owner }}/quasar-ci:${{ matrix.image }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: dnf install -y clang
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --compare_with_nodeset .CI/test_cases/test_default_quasar_design/reference_ns2.xml
+      - if: matrix.compiler == 'clang'
+        run: dnf install -y clang
+      - run: .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dump-${{ matrix.label }}
+          path: build/bin/dump.xml
+          if-no-files-found: ignore
 
-  o6_cache_variables:
+  # ── cross-backend parity (harvested .parity-night mechanic; advisory) ────
+  # Diffs each case's o6 dump against its uasdk dump. Activates once uasdk
+  # images exist under this owner; on an o6-only run it finds no pairs and
+  # passes. Advisory (non-gating) -- some cross-backend diffs are known-benign.
+  cross_backend_parity:
+    needs: framework-cases
+    if: always()
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
+      image: ghcr.io/${{ github.repository_owner }}/quasar-ci:alma9-o6
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -62,382 +106,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: |
-          mkdir -p Device/include Device/src
-          cp .CI/test_cases/test_cache_variables/DTestClass.test.h Device/include/DTestClass.h
-          cp .CI/test_cases/test_cache_variables/DTestClass.test.cpp Device/src/DTestClass.cpp
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_cache_variables/Design.xml
-          --config .CI/test_cases/test_cache_variables/config.xml
-          --compare_with_nodeset .CI/test_cases/test_cache_variables/reference_ns2.xml
-
-  o6_source_variables:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_source_variables/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_source_variables/config.xml
-          --compare_with_nodeset .CI/test_cases/test_source_variables/reference_ns2.xml
+          path: _dumps
+          pattern: dump-*
+      - run: .CI/cross_backend_parity.py _dumps
 
-  o6_recurrent_hasobjects:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_recurrent_hasobjects/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_recurrent_hasobjects/config.xml
-
-  o6_single_variable_node:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_single_variable_node/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_single_variable_node/config.xml
-
-  o6_methods:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_methods/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_methods/config.xml
-          --compare_with_nodeset .CI/test_cases/test_methods/reference_ns2.xml
-
-  o6_async_methods:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_async_methods/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_async_methods/config.xml
-          --compare_with_nodeset .CI/test_cases/test_methods/reference_ns2.xml
-
-  o6_instantiation_from_design:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_instantiation_from_design/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_instantiation_from_design/config.xml
-          --compare_with_nodeset .CI/test_cases/test_instantiation_from_design/reference_ns2.xml
-
-  o6_config_entries:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_config_entries/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_config_entries/config.xml
-          --compare_with_nodeset .CI/test_cases/test_config_entries/reference_ns2.xml
-
-  o6_config_restrictions:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_config_restrictions/Design.xml
-
-  o6_calculated_variables:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_calculated_variables/Design.xml
-          --config .CI/test_cases/test_calculated_variables/config.xml
-          --compare_with_nodeset .CI/test_cases/test_calculated_variables/reference_ns2.xml
-
-  o6_defaulted_instance_name:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --design .CI/test_cases/test_defaulted_instance_name/Design.xml
-          --config .CI/test_cases/test_defaulted_instance_name/config.xml
-          --compare_with_nodeset .CI/test_cases/test_defaulted_instance_name/reference_ns2.xml
-
-  # ── UASDK tests ──────────────────────────────────────────────────────
-
-  uasdk_default_design:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --compare_with_nodeset .CI/test_cases/test_default_quasar_design/reference_ns2.xml
-
-  uasdk_sync_methods:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --design .CI/test_cases/test_methods/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_methods/config.xml
-          --compare_with_nodeset .CI/test_cases/test_methods/reference_ns2.xml
-
-  uasdk_async_methods:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --design .CI/test_cases/test_async_methods/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_async_methods/config.xml
-          --compare_with_nodeset .CI/test_cases/test_methods/reference_ns2.xml
-
-  uasdk_cache_variables:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Build with generated Design, then overlay Device sources and rebuild
-        run: |
-          cp .CI/test_cases/test_cache_variables/Design.xml Design/
-          ./quasar.py generate device --all
-          ./quasar.py set_build_config .CI/travis/build_configs/uasdk-eval.cmake
-          ./quasar.py build
-          cp .CI/test_cases/test_cache_variables/DTestClass.test.h Device/include/DTestClass.h
-          cp .CI/test_cases/test_cache_variables/DTestClass.test.cpp Device/src/DTestClass.cpp
-          cp -v .CI/test_cases/test_cache_variables/config.xml build/bin
-          ./quasar.py build
-          ./.CI/travis/server_fixture.py --command_to_run uasak_dump
-          /opt/NodeSetTools/nodeset_compare.py .CI/test_cases/test_cache_variables/reference_ns2.xml build/bin/dump.xml --ignore_nodeids StandardMetaData
-
-  uasdk_source_variables:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --design .CI/test_cases/test_source_variables/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_source_variables/config.xml
-          --compare_with_nodeset .CI/test_cases/test_source_variables/reference_ns2.xml
-
-  uasdk_config_entries:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --design .CI/test_cases/test_config_entries/Design.xml
-          --generate_all_devices
-          --config .CI/test_cases/test_config_entries/config.xml
-          --compare_with_nodeset .CI/test_cases/test_config_entries/reference_ns2.xml
-
-  uasdk_calculated_variables:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --design .CI/test_cases/test_calculated_variables/Design.xml
-          --config .CI/test_cases/test_calculated_variables/config.xml
-          --compare_with_nodeset .CI/test_cases/test_calculated_variables/reference_ns2.xml
-
-  # ── AlmaLinux 10 smoke tests ───────────────────────────────────────
-
-  alma10_o6_default_design:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:alma10
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend o6
-          --open62541_compat_branch ${{ env.OPEN62541_COMPAT_VERSION }}
-          --compare_with_nodeset .CI/test_cases/test_default_quasar_design/reference_ns2.xml
-
-  alma10_uasdk_default_design:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quasar-team/quasar-uasdk:alma10
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: >
-          .CI/run_test_case.py
-          --opcua_backend uasdk
-          --compare_with_nodeset .CI/test_cases/test_default_quasar_design/reference_ns2.xml
-
+  # ── configure-floor (build system, no compile): stock CMake 3.16 ─────────
   cmake_316_floor:
     runs-on: ubuntu-latest
     container:
@@ -452,17 +127,73 @@ jobs:
         with:
           submodules: recursive
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: ./quasar.py enable_module open62541-compat ${{ env.OPEN62541_COMPAT_VERSION }}
+      - run: |
+          COMPAT=$(python3 -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])")
+          ./quasar.py enable_module open62541-compat "$COMPAT"
       - run: ./quasar.py set_build_config open62541_config.cmake
       - run: ./quasar.py prepare_build Release
 
-  # ── framework invariants (no backend, hermetic) ──────────────────────
-  # Behavioural/idempotency checks on the Python codegen layer. No OPC-UA
-  # backend and no compiler -- they exercise the generators directly.
+  # ── toolchain-frontier probes (nightly/dispatch): newest CMake vs the stack ──
+  # Generalizes the OPCUA-3442/3443/3444 class (WS2025 findings): the toolchain
+  # frontier moves and latent assumptions rot. Deliberately UNPINNED latest CMake —
+  # these probes exist to see the frontier coming. Nightly-only so external
+  # breakage never blocks PRs. cmake_316_floor covers the other end of the range.
+  cmake_frontier:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Latest CMake + build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++ git libboost-all-dev libssl-dev libxml2-utils libxml2-dev libxerces-c-dev xsdcxx > /dev/null
+          pip3 -q install jinja2 lxml colorama pygit2 cmake
+          CMAKE_BIN=$(python3 -c "import cmake,os;print(cmake.CMAKE_BIN_DIR)")
+          echo "$CMAKE_BIN" >> "$GITHUB_PATH"
+          "$CMAKE_BIN/cmake" --version | head -1
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: |
+          COMPAT=$(python3 -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])")
+          ./quasar.py enable_module open62541-compat "$COMPAT"
+      - run: ./quasar.py set_build_config open62541_config.cmake
+      - run: ./quasar.py prepare_build Release
+
+  # Standalone open62541-compat with REAL dependency discovery (find_package
+  # Boost config-mode, googletest fetch+run) — the consumption mode quasar's own
+  # cells never exercise (they inject BOOST_LIBS / embed compat). Advisory until
+  # the compat pin carries the OPCUA-3442/3443 fixes (>= v1.5.8), then enforcing.
+  compat_standalone_frontier:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Latest CMake + Boost dev packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++ git libboost-chrono-dev libboost-date-time-dev libboost-thread-dev libboost-program-options-dev libboost-system-dev > /dev/null
+          pip3 -q install cmake
+          CMAKE_BIN=$(python3 -c "import cmake,os;print(cmake.CMAKE_BIN_DIR)")
+          echo "$CMAKE_BIN" >> "$GITHUB_PATH"
+          "$CMAKE_BIN/cmake" --version | head -1
+      - name: Clone open62541-compat at the manifest pin
+        run: |
+          COMPAT=$(python3 -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])")
+          echo "compat pin: $COMPAT"
+          git clone --branch "$COMPAT" --depth 1 https://github.com/quasar-team/open62541-compat.git compat
+      - name: Standalone configure + build + test (real discovery)
+        run: |
+          cmake -S compat -B build -DSTANDALONE_BUILD=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+          ./build/test/open62541-compat-Test
+
+  # ── framework invariants (hermetic: no backend, no compiler) ─────────────
   framework_invariants:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/quasar-team/quasar-uasdk:latest
+      image: ghcr.io/${{ github.repository_owner }}/quasar-ci:alma9-o6
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

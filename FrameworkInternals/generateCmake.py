@@ -79,9 +79,18 @@ def generateCmake(context, *args):
 
     print("Calling CMake")
     if platform.system() == "Windows":
-        subprocessWithImprovedErrors([getCommand("cmake"), "-DCMAKE_BUILD_TYPE=" + buildType,
-                                      "-G", "Visual Studio 15 2017 Win64", projectSourceDir],
-                                     getCommand("cmake"))
+        # Generator is overridable (QUASAR_CMAKE_GENERATOR [+ _PLATFORM]); with
+        # neither set, CMake auto-detects the newest installed Visual Studio.
+        # (Was hardcoded to the long-dead "Visual Studio 15 2017 Win64".)
+        cmd = [getCommand("cmake"), "-DCMAKE_BUILD_TYPE=" + buildType]
+        generator = os.environ.get("QUASAR_CMAKE_GENERATOR")
+        if generator:
+            cmd += ["-G", generator]
+            gen_platform = os.environ.get("QUASAR_CMAKE_GENERATOR_PLATFORM")
+            if gen_platform:
+                cmd += ["-A", gen_platform]
+        cmd += [projectSourceDir]
+        subprocessWithImprovedErrors(cmd, getCommand("cmake"))
     else:
         builderArgs = [] if builder == BuilderDefault else ["-G", builder]
         subprocessWithImprovedErrors([getCommand("cmake"), "-DCMAKE_BUILD_TYPE=" + buildType] + builderArgs +

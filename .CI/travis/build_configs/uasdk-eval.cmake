@@ -33,20 +33,34 @@
 #------
 
 SET( OPCUA_TOOLKIT_PATH /opt/uasdk )
-SET( OPCUA_TOOLKIT_LIBS_DEBUG "-luamoduled -lcoremoduled -luabasecppd -luastackd -luapkicppd -lxmlparsercppd -lxml2 -lssl -lcrypto -lpthread" )
-SET( OPCUA_TOOLKIT_LIBS_RELEASE "-luamodule -lcoremodule -luabasecpp -luastack -luapkicpp -lxmlparsercpp -lxml2 -lssl -lcrypto -lpthread" )
+
+# The installed UA SDK module set differs across majors. 1.x (1.6.5/1.8.9) ships
+# uamodule + separate uapkicpp/xmlparsercpp; 2.0.x folds pki + xmlparser into uabasecpp,
+# drops uamodule, and adds uabasedi/uaserverdi + an alternative embeddedstack (NOT linked --
+# it conflicts with uastack). Detect the layout from a 1.x-only lib and pick the right
+# module + include set so one config serves every toolkit version. link_directories(
+# ${OPCUA_TOOLKIT_PATH}/lib ) is added by the top-level CMakeLists, so bare -l names resolve.
+if( EXISTS "${OPCUA_TOOLKIT_PATH}/lib/libuamodule.a" )
+        # UA SDK 1.x layout
+        SET( OPCUA_TOOLKIT_LIBS_RELEASE "-luamodule -lcoremodule -luabasecpp -luastack -luapkicpp -lxmlparsercpp -lxml2 -lssl -lcrypto -lpthread" )
+        SET( OPCUA_TOOLKIT_LIBS_DEBUG   "-luamoduled -lcoremoduled -luabasecppd -luastackd -luapkicppd -lxmlparsercppd -lxml2 -lssl -lcrypto -lpthread" )
+        SET( _UASDK_INCDIRS uabasecpp uaservercpp uapkicpp uastack xmlparsercpp )
+else()
+        # UA SDK 2.0.x layout. embeddedstack provides the low-level C base (ua_malloc/ua_free,
+        # ua_buffer_*, the ua_jdecode_* JSON decoder, ua_decoder_context_*) that uabasecpp links
+        # against -- it is a required dependency, not an alternative to uastack. --start-group
+        # lets ld resolve the mutually-referential 2.0.x static modules regardless of -l order.
+        SET( OPCUA_TOOLKIT_LIBS_RELEASE "-Wl,--start-group -lcoremodule -luabasecpp -luastack -lembeddedstack -Wl,--end-group -lxml2 -lssl -lcrypto -lpthread" )
+        SET( OPCUA_TOOLKIT_LIBS_DEBUG   "${OPCUA_TOOLKIT_LIBS_RELEASE}" )
+        SET( _UASDK_INCDIRS uabasecpp uaservercpp uastack uaclientcpp )
+endif()
 
 add_custom_target( quasar_opcua_backend_is_ready )
 
-include_directories (
-        ${OPCUA_TOOLKIT_PATH}/include/platform/linux
-        ${OPCUA_TOOLKIT_PATH}/include
-        ${OPCUA_TOOLKIT_PATH}/include/uabasecpp
-        ${OPCUA_TOOLKIT_PATH}/include/uaservercpp
-        ${OPCUA_TOOLKIT_PATH}/include/uapkicpp
-        ${OPCUA_TOOLKIT_PATH}/include/uastack
-        ${OPCUA_TOOLKIT_PATH}/include/xmlparsercpp
-)
+include_directories ( ${OPCUA_TOOLKIT_PATH}/include )
+foreach( _d ${_UASDK_INCDIRS} )
+        include_directories ( ${OPCUA_TOOLKIT_PATH}/include/${_d} )
+endforeach()
 
 #-----
 #XML Libs

@@ -1,0 +1,85 @@
+name: Setup quasar Windows build environment
+description: >
+  Token-free, GitHub-hosted windows-2025 build environment for quasar (the
+  Windows analog of the Linux quasar-ci images). Activates the host MSVC
+  toolchain and provisions Boost (nuget vc141 1.67), CodeSynthesis XSD, and
+  OpenSSL/LibXml2/Xerces-C (vcpkg, cached). Exposes the dep paths via
+  $GITHUB_ENV/$GITHUB_PATH for the steps that follow. No CERN/UASDK token.
+
+  A real Windows container image isn't used here: a container can't reuse the
+  runner's pre-installed Visual Studio, so it would have to bake MSVC (~20 GB,
+  slow per-job pulls). This composite action is the "one move clean" equivalent
+  -- one `uses:` step provisions everything, with the heavy vcpkg deps cached.
+
+runs:
+  using: composite
+  steps:
+    - name: Activate MSVC dev environment (x64) -- provides cl + ninja, no VS-instance detection
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+    - name: Install Python codegen deps (+ astyle for generated-code formatting)
+      shell: pwsh
+      run: |
+        python -m pip install jinja2 lxml colorama pygit2
+        choco install astyle -y --no-progress
+    - name: Provision Boost (nuget vc141 1.67 libs + full headers)
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force C:\deps\boost | Out-Null
+        $pkgs='boost','boost-vc141','boost_system-vc141','boost_filesystem-vc141','boost_chrono-vc141','boost_date_time-vc141','boost_thread-vc141','boost_program_options-vc141','boost_log-vc141','boost_log_setup-vc141','boost_regex-vc141'
+        foreach($p in $pkgs){ nuget install $p -Version 1.67.0 -OutputDirectory C:\deps\boost -ExcludeVersion -NonInteractive }
+        # discover the real Boost include root (the dir containing boost\xpressive\xpressive.hpp)
+        $xp = Get-ChildItem C:\deps\boost -Recurse -Filter 'xpressive.hpp' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like '*\boost\xpressive\xpressive.hpp' } | Select-Object -First 1
+        if (-not $xp) { throw "boost/xpressive/xpressive.hpp not found under C:\deps\boost (incomplete Boost headers)" }
+        $boostInc = Split-Path (Split-Path (Split-Path $xp.FullName))
+        Write-Host "Boost include root: $boostInc"
+        "BOOST_PATH_HEADERS=$boostInc" >> $env:GITHUB_ENV
+        "BOOST_PATH_LIBS=C:\deps\boost" >> $env:GITHUB_ENV
+    - name: Provision CodeSynthesis XSD (xsd.exe + libxsd)
+      shell: pwsh
+      run: |
+        Invoke-WebRequest "https://www.codesynthesis.com/download/xsd/4.0/windows/i686/xsd-4.0.0-i686-windows.zip" -OutFile xsd.zip
+        Expand-Archive xsd.zip C:\deps\xsd-dl -Force
+        $xsdexe=(Get-ChildItem C:\deps\xsd-dl -Recurse -Filter xsd.exe | Select-Object -First 1).FullName
+        $libxsd=(Get-ChildItem C:\deps\xsd-dl -Recurse -Directory -Filter libxsd | Select-Object -First 1).FullName
+        "CODE_SYNTHESYS_XSD_PATH_HEADERS=$libxsd" >> $env:GITHUB_ENV
+        (Split-Path $xsdexe) >> $env:GITHUB_PATH
+        Write-Host "xsd.exe=$xsdexe"; Write-Host "libxsd=$libxsd"
+    # Cache the built vcpkg deps. Split restore/save so the cache is written
+    # right after vcpkg (before the build step that may still fail) -- the
+    # combined cache action skips saving on a failed job, which is why earlier
+    # runs kept rebuilding for ~30 min.
+    - name: Restore vcpkg deps cache
+      id: vcpkgcache
+      uses: actions/cache/restore@v4
+      with:
+        path: C:\vcpkg\installed
+        key: vcpkg-x64-windows-openssl-libxml2-xerces-v2
+    - name: Provision OpenSSL / LibXml2 / Xerces-C (vcpkg)
+      shell: pwsh
+      run: |
+        vcpkg install openssl libxml2 xerces-c --triplet x64-windows
+        Write-Host "vcpkg exit code: $LASTEXITCODE"
+        $vi = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+        if (-not (Test-Path $vi)) { $vi = "C:\vcpkg\installed\x64-windows" }
+        Write-Host "vcpkg installed dir: $vi"
+        Get-ChildItem "$vi\lib" -Filter '*.lib' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+        $xl = Get-ChildItem "$vi\lib" -Filter 'xerces-c*.lib' -ErrorAction SilentlyContinue | Where-Object Name -notlike '*_3*' | Select-Object -First 1
+        if ($xl) { Copy-Item $xl.FullName "$vi\lib\xerces-c_3.lib" -Force }
+        # vcpkg ships xerces as xerces-c_3.lib; the server config wants that name, but
+        # uasak links the generic 'xerces-c' -> alias xerces-c.lib so both resolve.
+        if (Test-Path "$vi\lib\xerces-c_3.lib") { Copy-Item "$vi\lib\xerces-c_3.lib" "$vi\lib\xerces-c.lib" -Force }
+        if (Test-Path "$vi\lib\libcrypto.lib") { Copy-Item "$vi\lib\libcrypto.lib" "$vi\lib\openssl.lib" -Force }
+        "OPENSSL_PATH_HEADERS=$vi\include" >> $env:GITHUB_ENV
+        "OPENSSL_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
+        "XERCESC_PATH_HEADERS=$vi\include" >> $env:GITHUB_ENV
+        "XERCESC_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
+        "LIBXML2_PATH_LIBS=$vi\lib" >> $env:GITHUB_ENV
+        exit 0
+    - name: Save vcpkg deps cache
+      if: steps.vcpkgcache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: C:\vcpkg\installed
+        key: vcpkg-x64-windows-openssl-libxml2-xerces-v2

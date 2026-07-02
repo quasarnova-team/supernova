@@ -1,0 +1,31 @@
+# Token-free UASDK CI image = the o6 image (build deps + the bare
+# open62541-1.2.2 uasak dump tool + NodeSetTools) PLUS the Unified Automation
+# C++ SDK pre-built (static libs) at /opt/uasdk, where uasdk-eval.cmake points.
+# The dump tool stays the o6 uasak: it is an OPC UA *client*, backend-agnostic,
+# and its bare-NodeId output matches the reference NodeSets for both backends.
+#
+# UASDK is commercial -- there is no public download, so quasar can't bundle or
+# rebuild it here. The build-uasdk job (build-ci-images.yml) downloads the
+# matching pre-built tarball from paris-atlas-dcs/uasdk-paris-tools GitHub
+# Releases -- authenticated by a GitHub App, NOT the CERN ICS_REPO_DEPS_TOKEN --
+# and drops it in the build context as UASDK_TARBALL; this image just extracts it.
+# The tarball is the SDK install tree (`uasdk-<ver>-gcc<gccver>/{include,lib,...}`),
+# which becomes /opt/uasdk as uasdk-eval.cmake expects.
+ARG OWNER=parasxos
+ARG OS_TAG=alma9
+# Arch suffix on the o6 base image: empty for x86_64 (:<os>-o6), '-arm64' for the native
+# arm64 build (:<os>-o6-arm64). Lets one Dockerfile produce both-arch uasdk images.
+ARG BASE_ARCH_SUFFIX=
+FROM ghcr.io/${OWNER}/quasar-ci:${OS_TAG}-o6${BASE_ARCH_SUFFIX}
+
+ARG UASDK_TARBALL
+RUN test -n "$UASDK_TARBALL" || { echo "UASDK_TARBALL build-arg required (pre-built SDK tarball placed in the build context by build-uasdk)"; exit 1; }
+COPY ${UASDK_TARBALL} /tmp/uasdk.tar.gz
+RUN set -eux; \
+    mkdir -p /tmp/x; \
+    tar xzf /tmp/uasdk.tar.gz -C /tmp/x; \
+    d="$(find /tmp/x -maxdepth 1 -type d -name 'uasdk-*')"; \
+    test -n "$d"; \
+    mv "$d" /opt/uasdk; \
+    rm -rf /tmp/uasdk.tar.gz /tmp/x; \
+    test -d /opt/uasdk/lib && test -d /opt/uasdk/include

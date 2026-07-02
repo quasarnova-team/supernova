@@ -1,0 +1,441 @@
+name: CI (Windows Server 2025)
+
+# Windows Server 2025 track (token-free; no UASDK/CERN token).
+#   * framework-invariants-windows -- GREEN: hermetic Python codegen tests.
+#   * framework-cases-windows -- full o6 oracle: build server + uasak_dump, run,
+#     dump address space, compare to the reference NodeSet. The build environment
+#     is provisioned in one move by the ./.github/actions/setup-quasar-windows
+#     composite action (the Windows analog of the Linux quasar-ci images -- a real
+#     container is impractical since it can't reuse the runner's VS). vcpkg deps
+#     are cached. A future ws2025-uasdk path (o6 + UASDK from a UASDK_URL secret)
+#     reuses the same action to add token-free uasdk Windows coverage.
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 4 * * *'   # nightly: full Windows case set (ci.yml Linux nightly is 03:00)
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full case set (default for schedule/dispatch; push always runs default_design only)'
+        default: 'true'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+
+  # Derive the Windows case list by event: push -> just default_design (fast per-commit
+  # smoke); schedule/dispatch -> all manifest cases (full Windows coverage, the Windows
+  # analog of the Linux nightly tier). One source of truth -- the same manifest the Linux
+  # cube uses.
+  windows-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      cases: ${{ steps.gen.outputs.cases }}
+      uasdk_combos: ${{ steps.gen.outputs.uasdk_combos }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        # cases: the per-event case list (as before). uasdk_combos: the (case x sdk_version)
+        # include-list for the uasdk cells. The version axis is narrowed the same way the
+        # Linux cube narrows non-default uasdk versions: the FULL case set runs only against
+        # the newest SDK (2.0.3); 1.6.5/1.8.9 re-run just the manifest's representative_cases
+        # (the version delta is SDK-level, not case-level, so re-sweeping every case per SDK
+        # buys nothing). No 2.0.2 cell: no Windows source bundle was released for it. On push
+        # (default_design smoke) every version still gets the one smoke case, so all three
+        # SDK builds stay exercised per-commit.
+        run: |
+          python3 - '${{ github.event_name }}' <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, sys
+          event = sys.argv[1]
+          manifest = json.load(open(".CI/test_cases/manifest.json"))
+          cases = ["default_design"] if event == "push" else [c["name"] for c in manifest["cases"]]
+          full_version = "2.0.3"
+          alt_versions = ["1.6.5", "1.8.9"]
+          alt_cases = cases if event == "push" else [c for c in manifest["representative_cases"] if c in cases]
+          combos = [{"case": c, "sdk_version": full_version} for c in cases]
+          combos += [{"case": c, "sdk_version": v} for v in alt_versions for c in alt_cases]
+          print("cases=" + json.dumps(cases))
+          print("uasdk_combos=" + json.dumps(combos))
+          EOF
+      - run: |
+          echo "Windows cases -> ${{ steps.gen.outputs.cases }}"
+          echo "Windows uasdk combos -> ${{ steps.gen.outputs.uasdk_combos }}"
+
+  framework-invariants-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Python + tooling deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install jinja2 lxml colorama pygit2
+          choco install astyle -y --no-progress
+        shell: pwsh
+      - name: Codegen idempotency / upgrade / unbound-delegate invariants
+        run: |
+          python .CI/test_upgrade_override.py
+          python .CI/test_no_spurious_rebuild.py
+          python .CI/test_no_unbound_delegate.py
+        shell: pwsh
+
+  framework-cases-windows:
+    needs: windows-matrix
+    if: ${{ vars.HAS_WINDOWS == 'true' }}
+    runs-on: windows-2025
+    name: o6 windows · ${{ matrix.case }}
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.windows-matrix.outputs.cases) }}
+    env:
+      QUASAR_CMAKE_GENERATOR: Ninja
+      # vcpkg toolchain so find_package(XercesC/LibXml2/OpenSSL) finds the vcpkg deps
+      CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+      # run_test_case.py honours these on Windows (unset on Linux, so its path is unchanged):
+      # the MSVC build config + the open62541-compat fork branch (v1.5.7 + MSVC C-flags guard).
+      QUASAR_BUILD_CONFIG: open6_win_configuration.cmake
+      QUASAR_COMPAT_URL: https://github.com/parasxos/open62541-compat.git
+      QUASAR_COMPAT_TAG: msvc-cflags-157
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
+        uses: ./.github/actions/setup-quasar-windows
+      - name: Build uasak_dump (backend-agnostic dump tool)
+        uses: ./.github/actions/build-uasak-dump
+      - name: Run case ${{ matrix.case }} (o6) — build + run + oracle
+        run: |
+          $ErrorActionPreference='Stop'
+          # uasak_dump.exe (built above, in .\uasak\build) + the vcpkg runtime DLLs (xerces-c /
+          # libxml2 / openssl) on PATH; NodeSetTools provides nodeset_compare for the oracle.
+          # run_test_case.py applies the case's design/config/device-sources, builds the o6
+          # server (open6_win_configuration + the MSVC compat fork via the QUASAR_* env above),
+          # runs it, dumps the address space, and judges by the case kind (oracle diff vs smoke).
+          $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin"
+          git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
+          $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
+          python .CI\run_test_case.py --case ${{ matrix.case }} --backend o6
+          if ($LASTEXITCODE -ne 0) { throw "case ${{ matrix.case }} (o6) failed" }
+        shell: pwsh
+      - name: Upload dump.xml (oracle-compare debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windump-o6-${{ matrix.case }}
+          path: build/bin/dump.xml
+          if-no-files-found: ignore
+
+  # uasdk × Windows, over the SDK version axis {1.6.5, 1.8.9, 2.0.3}. Builds the
+  # Unified Automation UA Toolkit x64 from the vendor Windows source bundle (the
+  # source builds for the active MSVC arch; we reuse the x64 setup-quasar-windows
+  # env), installs it, and uploads one artifact per version for the case cells
+  # below. Gated on HAS_WINDOWS_UASDK + the UASDK_DL_TOKEN secret, because the
+  # commercial SDK bundles live in private paris-atlas-dcs releases (downloaded
+  # with that token). Per-version deltas (bundle format, OpenSSL injection, source
+  # patches) are handled inline in the build step; the known 1.6.5 fix chain is
+  # kept and made version-tolerant (each patch no-ops when its pattern is absent).
+  windows-uasdk-sdk:
+    if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
+    runs-on: windows-2025
+    name: uasdk sdk build · ${{ matrix.sdk_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.6.5 ships as the legacy NSIS self-extractor release; 1.8.9/2.0.3 are the
+        # modern plain-.zip cpp bundles. (No 2.0.2: no Windows source bundle exists.)
+        include:
+          - sdk_version: '1.6.5'
+            release_tag: uasdk-1.6.5-win32-x86-vs2015-src
+            asset_pattern: '*.exe'
+          - sdk_version: '1.8.9'
+            release_tag: uasdk-1.8.9-win-src
+            asset_pattern: uasdkcppbundle-src-windows-v1.8.9-650.zip
+          - sdk_version: '2.0.3'
+            release_tag: uasdk-2.0.3-win-src
+            asset_pattern: uasdkcppbundle-src-windows-v2.0.3-681.zip
+    env:
+      QUASAR_CMAKE_GENERATOR: Ninja
+      CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
+        uses: ./.github/actions/setup-quasar-windows
+      - name: Build UASDK ${{ matrix.sdk_version }} (x64, from source)
+        env:
+          GH_TOKEN: ${{ secrets.UASDK_DL_TOKEN }}
+        run: |
+          $ErrorActionPreference='Stop'
+          function chk($w){ if ($LASTEXITCODE -ne 0) { throw "$w failed (exit $LASTEXITCODE)" } }
+          gh release download "${{ matrix.release_tag }}" --repo paris-atlas-dcs/uasdk-paris-tools --pattern "${{ matrix.asset_pattern }}" --dir C:\uasdk-dl; chk "download SDK bundle"
+          $bundle = (Get-ChildItem C:\uasdk-dl | Select-Object -First 1).FullName
+          # 1.6.5 ships as an NSIS self-extractor (.exe); 1.8.9/2.0.3 are plain .zip bundles
+          # (top dir uasdkcppbundle-src-windows-v<ver>-<build>/). 7z (preinstalled on windows
+          # runners) opens both.
+          7z x -y -oC:\uasdk-src "$bundle" > $null; chk "extract SDK"
+          $root = (Get-ChildItem C:\uasdk-src -Recurse -Filter CMakeLists.txt | Sort-Object { $_.FullName.Length } | Select-Object -First 1).Directory.FullName
+          Write-Host "SDK source root: $root"
+          # Forward slashes: these paths flow into the SDK's generated cmake_install.cmake via
+          # FindUaOpenSSL's install(FILES ...) (OpenSSL/libxml2 DLLs). With backslashes, CMake
+          # parses 'C:\vcpkg\...' as invalid string escapes (\v, \x) -> install syntax error.
+          $vi = 'C:/vcpkg/installed/x64-windows'
+          $is2x = '${{ matrix.sdk_version }}'.StartsWith('2.')
+          # The 1.6.5 bundle's SetThirdPartyPaths only recognizes up to vs2019 and FATALs on
+          # the runner's vc143. We follow the quasar-team's Windows approach -- provide x64
+          # OpenSSL/libxml2 externally (vcpkg), so the bundle's win32/vs2015 third-party isn't
+          # needed -- and patch the unrecognized-VS FATAL to default COMPILER_DIR=vs2019 so
+          # configure proceeds. Version-tolerant: .Replace is a no-op where a newer bundle's
+          # SetThirdPartyPaths doesn't carry that exact FATAL.
+          $stp = (Get-ChildItem "$root\cmake" -Filter SetThirdPartyPaths.cmake -ErrorAction SilentlyContinue | Select-Object -First 1)
+          if ($stp) {
+            (Get-Content $stp.FullName -Raw).Replace(
+              'message(FATAL_ERROR "The used Visual Studio version was not recognized. "',
+              "set(COMPILER_DIR vs2019)`n                message(STATUS `"VS unrecognized; defaulting COMPILER_DIR=vs2019 (external third-party provided). `"") | Set-Content $stp.FullName
+            Write-Host "patched SetThirdPartyPaths for vc143"
+          }
+          # The 1.x SDKs declare cmake_minimum_required(VERSION 2.8.x) in every subdir/.cmake,
+          # which CMake 4.x rejects ("compatibility with CMake < 3.5 removed"). CMAKE_POLICY_VERSION_MINIMUM=3.5
+          # DOES downgrade that to a harmless deprecation warning -- but only if it actually takes
+          # effect. The real blocker was the inherited vcpkg CMAKE_TOOLCHAIN_FILE (job env): under
+          # CMake 4 the runner's vcpkg.cmake errors at cmake_policy and aborts toolchain processing
+          # before the override applies, so every per-file minimum re-surfaced as a hard error. We
+          # don't need vcpkg's toolchain here (OpenSSL/libxml2 are passed explicitly below), so we
+          # drop it for the SDK configure (just before cmake) -- then the override does its job.
+          # Validated locally on the extracted 1.6.5 bundle with cmake 4.0.3: 2.8.0 -> deprecation
+          # warning, configure proceeds past the whole cmake_minimum_required + FindUaOpenSSL
+          # cascade. Both are harmless no-ops on 2.0.3's modern CMakeLists.
+          # add_subdirectory(examples) is unconditional in 1.x, so comment it out -- we don't
+          # build examples (the -replace no-ops where the bundle has no such line).
+          (Get-Content "$root\CMakeLists.txt" -Raw) -replace 'add_subdirectory\(examples\)', '# add_subdirectory(examples)  # disabled for CI' | Set-Content "$root\CMakeLists.txt"
+          Write-Host "disabled examples subdirectory (if present)"
+          # libxml2 >= 2.12 changed xmlGetLastError() to return 'const xmlError *'; the 2019-era
+          # 1.6.5 SDK assigns it to a non-const xmlErrorPtr (xmldocument.cpp:643/649) -> C2440
+          # under MSVC with the modern vcpkg libxml2. Both locals only read ->message/->line, so
+          # make them const. Conditional: only patch when the pre-const pattern is actually
+          # present (newer bundles may be const-clean, and 2.0.x folds the xmlparser into
+          # uabasecpp so the file may not exist at all).
+          $xd = "$root\src\uabase\xmlparser\xmldocument.cpp"
+          if ((Test-Path $xd) -and ((Get-Content $xd -Raw) -match 'xmlErrorPtr pError = xmlGetLastError\(\);')) {
+            (Get-Content $xd -Raw) -replace 'xmlErrorPtr pError = xmlGetLastError\(\);', 'const xmlError* pError = xmlGetLastError();' | Set-Content $xd
+            Write-Host "patched xmldocument.cpp for libxml2 const xmlError*"
+          } else {
+            Write-Host "libxml2 const xmlError* patch not needed for this bundle"
+          }
+          # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
+          # /FIconio.h). Dynamic vcpkg libs -> their DLLs go on PATH for the oracle run.
+          # Drop the inherited vcpkg toolchain so CMAKE_POLICY_VERSION_MINIMUM=3.5 is honored (see above);
+          # OpenSSL/libxml2 are supplied explicitly via -D and CMAKE_PREFIX_PATH instead.
+          Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
+          # OpenSSL injection differs per major. 1.6.5/1.8.9: FindUaOpenSSL honors explicit
+          # OPENSSL_INCLUDE_DIR/SSL_LIBRARY/CRYPTO_LIBRARY/VERSION (NOT OPENSSL_ROOT_DIR) and
+          # then skips the bundled third-party search. 2.0.3: FindUaOpenSSL is a deprecation
+          # stub and the SDK uses standard find_package(OpenSSL) -> OPENSSL_ROOT_DIR is the
+          # right knob. libxml2 stays explicit via LIBXML2_INCLUDE_DIR/LIBXML2_LIBRARIES for
+          # every version (on 2.0.x it is simply unused).
+          # NOTE on dotted numeric values: PowerShell splits a BARE -DFOO=3.5 command-line token
+          # into "-DFOO=3" + ".5" (cmake then sees CMAKE_POLICY_VERSION_MINIMUM="3" -> invalid,
+          # and OPENSSL_VERSION="3" -> FindUaOpenSSL list-index error). Quoted tokens and array
+          # elements reach cmake intact -- keep it that way.
+          if ($is2x) {
+            $sslArgs = @("-DOPENSSL_ROOT_DIR=$vi")
+          } else {
+            $sslArgs = @("-DOPENSSL_INCLUDE_DIR=$vi/include", "-DOPENSSL_SSL_LIBRARY=$vi/lib/libssl.lib", "-DOPENSSL_CRYPTO_LIBRARY=$vi/lib/libcrypto.lib", "-DOPENSSL_VERSION=3.5.5")
+            # 1.8.9's install_openssl_* macros read OPENSSL_MSVC_ARCH_SUFFIX, normally set by
+            # the bundled-third-party search that the explicit-var escape hatch skips ->
+            # empty var in if(... EQUAL "32") is a hard error (FindUaOpenSSL.cmake:341).
+            # x64 selects .../bin/libcrypto-3-x64.dll, which vcpkg's layout provides.
+            $sslArgs += "-DOPENSSL_MSVC_ARCH_SUFFIX=64"
+          }
+          cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM="3.5" `
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
+            -DBUILD_EXAMPLES=off -DBUILD_UACLIENTCPP_APP=off -DBUILD_UASERVERCPP_APP=off `
+            -DUASTACK_WITH_PKI_WIN32=ON -DUASTACK_CLIENTAPI_ENABLED=ON -DBUILD_UACLIENTCPP=ON `
+            @sslArgs `
+            -DLIBXML2_INCLUDE_DIR="$vi/include/libxml2" -DLIBXML2_LIBRARIES="$vi/lib/libxml2.lib" `
+            -DCMAKE_CXX_FLAGS="/FIconio.h" -DCMAKE_EXE_LINKER_FLAGS="/DEFAULTLIB:bcrypt.lib" `
+            -DCMAKE_PREFIX_PATH="$vi" -DCMAKE_INSTALL_PREFIX=C:/uasdk; chk "uasdk configure"
+          cmake --build C:\uasdk-b; chk "uasdk build"
+          cmake --install C:\uasdk-b; chk "uasdk install"
+        shell: pwsh
+      - name: Upload the built UASDK ${{ matrix.sdk_version }} (consumed per case by the cells below)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uasdk-windows-${{ matrix.sdk_version }}
+          path: C:\uasdk
+
+  # Fan the case set out over the pre-built SDKs: download the right version artifact,
+  # build the uasdk server (uasdk_win_configuration.cmake detects the 1.x-vs-2.x install
+  # layout from the artifact), run the same backend-agnostic uasak_dump oracle
+  # (run_test_case.py applies the case + normalizes the open62541>=1.5 quoted NodeIds).
+  # Each SDK version is built ONCE (above), not per case. The (case x sdk_version) cells
+  # come from windows-matrix.uasdk_combos: full case set on 2.0.3 only, representative
+  # subset on 1.6.5/1.8.9 (see the narrowing rationale in windows-matrix).
+  framework-cases-windows-uasdk:
+    needs: [windows-matrix, windows-uasdk-sdk]
+    if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
+    runs-on: windows-2025
+    name: uasdk ${{ matrix.sdk_version }} windows · ${{ matrix.case }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.windows-matrix.outputs.uasdk_combos) }}
+    env:
+      QUASAR_CMAKE_GENERATOR: Ninja
+      CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+      QUASAR_BUILD_CONFIG: uasdk_win_configuration.cmake
+      OPCUA_TOOLKIT_PATH: C:/uasdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
+        uses: ./.github/actions/setup-quasar-windows
+      - name: Download the pre-built UASDK ${{ matrix.sdk_version }}
+        uses: actions/download-artifact@v4
+        with:
+          name: uasdk-windows-${{ matrix.sdk_version }}
+          path: C:\uasdk
+      - name: Verify the SDK artifact is present
+        run: if (-not (Test-Path C:\uasdk\lib)) { throw "UASDK artifact missing C:\uasdk\lib" }
+        shell: pwsh
+      - name: Patch CodeSynthesis libxsd for the msxml/Xerces DOMDocument clash
+        run: |
+          $ErrorActionPreference='Stop'
+          # Under BACKEND_UATOOLKIT the SDK platform headers pull the Windows COM chain
+          # (<windows.h> -> urlmon.h -> msxml.h); msxml's global ::DOMDocument coclass collides
+          # with xercesc::DOMDocument inside libxsd's 'using namespace xercesc' blocks
+          # (serialization.txx / parsing-source.txx / serialization-source.txx) -> C2872 in every
+          # quasar TU that mixes UASDK headers with the generated Configuration. msxml.h cannot be
+          # skipped (urlmon.h uses IXMLElement from it), so qualify bare DOMDocument -> xercesc::
+          # DOMDocument in libxsd. Only DOMDocument clashes (DOMElement/DOMNode/... are xercesc-only).
+          # Skip #include lines (must keep <xercesc/dom/DOMDocument.hpp>); the negative look-around
+          # leaves already-qualified names and DOMDocumentFragment/Type untouched. Scoped to this
+          # job, so the shared o6 cell is unaffected.
+          $lx = $env:CODE_SYNTHESYS_XSD_PATH_HEADERS
+          if (-not $lx) { throw "CODE_SYNTHESYS_XSD_PATH_HEADERS not set" }
+          $n = 0
+          Get-ChildItem $lx -Recurse -File | Where-Object { $_.Extension -in '.hxx','.txx','.ixx' } | ForEach-Object {
+            $changed = $false
+            $out = foreach ($ln in (Get-Content $_.FullName)) {
+              if ($ln -match '#\s*include') { $ln }
+              else {
+                $r = $ln -replace '(?<![:\w])DOMDocument(?!\w)', 'xercesc::DOMDocument'
+                if ($r -ne $ln) { $changed = $true }
+                $r
+              }
+            }
+            if ($changed) { Set-Content $_.FullName $out; $n++ }
+          }
+          Write-Host "qualified bare DOMDocument -> xercesc::DOMDocument in $n libxsd files"
+        shell: pwsh
+      - name: Build uasak_dump (backend-agnostic dump tool)
+        uses: ./.github/actions/build-uasak-dump
+      - name: Run case ${{ matrix.case }} (uasdk) — build + run + oracle
+        run: |
+          $ErrorActionPreference='Stop'
+          # uasak_dump (./uasak/build) + vcpkg runtime DLLs + the SDK's bin on PATH; NodeSetTools
+          # for the compare. run_test_case.py applies the case design/config, builds the uasdk
+          # server (uasdk_win_configuration via QUASAR_BUILD_CONFIG + OPCUA_TOOLKIT_PATH), runs it,
+          # dumps, normalizes the open62541>=1.5 quoted NodeIds to bare, and judges by case kind.
+          $env:Path += ";$PWD\uasak\build;C:\vcpkg\installed\x64-windows\bin;C:\uasdk\bin"
+          git clone --depth=1 -b v0.0.5 https://github.com/quasar-team/NodeSetTools.git C:\deps\NodeSetTools
+          $env:QUASAR_NODESETTOOLS='C:\deps\NodeSetTools'
+          python .CI\run_test_case.py --case ${{ matrix.case }} --backend uasdk
+          if ($LASTEXITCODE -ne 0) { throw "case ${{ matrix.case }} (uasdk) failed" }
+        shell: pwsh
+      - name: Upload dump.xml (oracle-compare debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windump-uasdk-${{ matrix.sdk_version }}-${{ matrix.case }}
+          path: build/bin/dump.xml
+          if-no-files-found: ignore
+
+  # ── toolchain-frontier probe (nightly/dispatch): standalone compat on WS2025 ──
+  # Windows twin of ci.yml's compat_standalone_frontier. Generalizes the
+  # OPCUA-3442/3443/3444 class: standalone open62541-compat with REAL dependency
+  # discovery (find_package(Boost) config-mode via Boost_ROOT, googletest fetch)
+  # on the newest CMake (unpinned — the probe watches the frontier move). Boost is
+  # built once via b2 clang-win (versioned layout: findable ONLY by BoostConfig,
+  # invisible to module-mode FindBoost — the exact geometry of OPCUA-3442) and
+  # cached. Advisory until the compat pin carries the fixes (>= v1.5.8).
+  # Generator choice is deliberate: Ninja passes CMAKE_C_FLAGS verbatim to cl
+  # (hard D8021 on GNU flags) while the VS generator's flag mapping lets cl merely
+  # warn (D9002) — proven on the OPCUA-3444 tree (repro run 28575458477: same
+  # tree, Ninja fails, VS generator builds). Ninja = the strict probe.
+  compat-standalone-frontier-windows:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Latest CMake (unpinned frontier)
+        shell: pwsh
+        run: |
+          python -m pip install --quiet --upgrade cmake
+          $cmakeExe = python -c "import cmake,os;print(os.path.join(cmake.CMAKE_BIN_DIR,'cmake.exe'))"
+          & $cmakeExe --version
+          echo "CMAKE_EXE=$cmakeExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Restore Boost cache
+        id: boost-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\BoostB2
+          key: boost-1.88.0-b2-clangwin-versioned
+      - name: Build Boost 1.88 via b2 clang-win (versioned headers)
+        if: steps.boost-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://archives.boost.io/release/1.88.0/source/boost_1_88_0.zip -OutFile C:\boost.zip
+          7z x C:\boost.zip -oC:\bsrc | Out-Null
+          cd C:\bsrc\boost_1_88_0
+          .\bootstrap.bat clang-win
+          if ($LASTEXITCODE -ne 0) { Write-Error "bootstrap clang-win failed"; exit 1 }
+          .\b2 install toolset=clang-win --prefix=C:\BoostB2 --with-chrono --with-date_time --with-thread --with-program_options link=static address-model=64 variant=debug,release -j4 | Select-Object -Last 5
+      - name: Save Boost cache
+        if: always() && steps.boost-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\BoostB2
+          key: boost-1.88.0-b2-clangwin-versioned
+      - name: Clone open62541-compat at the manifest pin
+        shell: pwsh
+        run: |
+          $compat = python -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])"
+          Write-Host "compat pin: $compat"
+          git clone --branch $compat --depth 1 https://github.com/quasar-team/open62541-compat.git compat
+      - name: Standalone configure + build + test (real discovery, Ninja)
+        shell: pwsh
+        run: |
+          $env:Boost_ROOT = "C:\BoostB2"
+          & $env:CMAKE_EXE -S compat -B build -G Ninja -DSTANDALONE_BUILD=ON -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { Write-Error "standalone configure failed"; exit 1 }
+          & $env:CMAKE_EXE --build build
+          if ($LASTEXITCODE -ne 0) { Write-Error "standalone build failed"; exit 1 }
+          & build\test\open62541-compat-Test.exe
+          if ($LASTEXITCODE -ne 0) { Write-Error "compat unit tests failed"; exit 1 }
+          exit 0

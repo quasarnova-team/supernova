@@ -68,7 +68,8 @@ def main():
 
     os.chdir(os.path.sep.join(['build', 'bin']))
 
-    process = subprocess.Popen('./OpcUaServer')
+    server_bin = 'OpcUaServer.exe' if os.name == 'nt' else './OpcUaServer'
+    process = subprocess.Popen(server_bin)
 
     print_msg('Server process was run under PID: {0}'.format(process.pid))
     print_msg('Now waiting few seconds to let it spin up... ')
@@ -91,8 +92,13 @@ def main():
         else:
             print_msg("Will exit now as no command was requested to be run")
         make_sure_the_bastard_dies(process)
-        if process.returncode == 0:
-            print_msg('Server exited, return code zero.')
+        # We terminated the server ourselves. On POSIX a graceful SIGTERM yields 0, but
+        # on Windows process.terminate() == TerminateProcess(..., 1), so even a healthy
+        # server reports exit code 1. The real pass/fail signal is the command_to_run
+        # (e.g. uasak_dump) exit code checked above plus the premature-death check, so
+        # don't treat the post-terminate code as a failure on Windows.
+        if process.returncode == 0 or os.name == 'nt':
+            print_msg('Server exited (return code {0}).'.format(process.returncode))
         else:
             print_msg('Server exited with invalid return code of {0}'.format(process.returncode))
             sys.exit(1)

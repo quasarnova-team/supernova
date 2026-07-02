@@ -21,3 +21,6 @@ Makefile
 **/cmake_generated.cmake
 build/
 env/
+
+# uasdk pre-built tarball downloaded by CI build-uasdk (never commit the commercial SDK)
+.CI/docker/_uasdk/

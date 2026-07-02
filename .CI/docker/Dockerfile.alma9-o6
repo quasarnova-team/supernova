@@ -1,0 +1,65 @@
+# Token-free open62541 CI image (AlmaLinux 9), explicit multi-stage build.
+# uasak's open62541-compat is PINNED to v1.4.7, which embeds open62541 v1.2.2.
+# open62541's UA_print serializes NodeIds bare (DataType="i=NNN") in 1.2.2, but
+# quoted (DataType="&quot;i=NNN&quot;") since the v1.5.4 re-amalgamation in
+# compat v1.5.0+. An old-o6 uasak therefore keeps uasak_dump matching the
+# committed (bare) reference NodeSets -- the same behaviour as quasar-team's
+# long-standing CI image. No UASDK -> no CERN token required.
+FROM cern/alma9-base AS git-fetcher
+RUN dnf install -y git
+RUN git clone https://github.com/quasar-team/UaSwissArmyKnife.git -b v0.7
+RUN git clone https://github.com/pnikiel/PrepareEcosystem.git
+RUN git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git
+RUN git clone -b v1.4.7 https://github.com/quasar-team/open62541-compat.git
+RUN git clone https://github.com/quasar-team/NodeSetTools.git -b v0.0.5
+
+FROM cern/alma9-base
+LABEL org.opencontainers.image.source="https://github.com/parasxos/quasar"
+
+RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+RUN dnf install -y \
+    git \
+    patch \
+  python3-colorama \
+  python3-jinja2 \
+  python3-lxml \
+  python3-pip \
+  cmake \
+  gcc-c++ \
+  boost-devel \
+  graphviz \
+  ninja-build \
+  xsd \
+  xerces-c-devel \
+  libxml2-devel \
+  openssl-devel \
+  doxygen \
+  astyle \
+  && dnf clean all \
+  && python3 -m pip install pygit2
+
+COPY --from=git-fetcher /UaSwissArmyKnife /UaSwissArmyKnife
+COPY --from=git-fetcher /PrepareEcosystem /UaSwissArmyKnife/build/PrepareEcosystem
+COPY --from=git-fetcher /LogIt /UaSwissArmyKnife/build/work/LogIt
+COPY --from=git-fetcher /open62541-compat /UaSwissArmyKnife/build/work/open62541-compat
+
+RUN cd /UaSwissArmyKnife/build/work/LogIt \
+  && mkdir build && cd build \
+  && cmake -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON \
+     -DCMAKE_INSTALL_PREFIX=/UaSwissArmyKnife/build/deploy/LogIt ../ \
+  && make && make install
+
+RUN cd /UaSwissArmyKnife/build/work/open62541-compat \
+  && mkdir build && cd build \
+  && cmake -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC \
+     -DOPEN62541-COMPAT_BUILD_CONFIG_FILE=boost_lcg.cmake \
+     -DLOGIT_INCLUDE_DIR=/UaSwissArmyKnife/build/deploy/LogIt/include \
+     -DLOGIT_EXT_LIB_DIR=/UaSwissArmyKnife/build/deploy/LogIt/lib \
+     -DCMAKE_INSTALL_PREFIX=/UaSwissArmyKnife/build/deploy/open62541-compat \
+     -DSKIP_TESTS=ON ../ \
+  && make && make install
+
+RUN cd /UaSwissArmyKnife/build \
+  && cmake ../ && make && make install
+
+COPY --from=git-fetcher /NodeSetTools /opt/NodeSetTools

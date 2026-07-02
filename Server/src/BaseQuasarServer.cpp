@@ -42,6 +42,7 @@
 
 #ifdef BACKEND_UATOOLKIT
    #include "xmldocument.h"
+   #include <openssl/err.h>  // to surface why UaPlatformLayer::init() fails (crypto/platform init)
 #endif
 
 #include <shutdown.h>
@@ -429,6 +430,23 @@ int BaseQuasarServer::initializeEnvironment()
 #endif
     initializeLogIt();
     logEnvironment();
+#ifdef BACKEND_UATOOLKIT
+    if (ret != 0)
+    {
+        LOG(Log::ERR) << "UaPlatformLayer::init() returned [" << ret << "] -- diagnosing:";
+        unsigned long e;
+        char buf[256];
+        bool anyOpenSslError = false;
+        while ((e = ERR_get_error()) != 0)
+        {
+            ERR_error_string_n(e, buf, sizeof(buf));
+            LOG(Log::ERR) << "  OpenSSL error queue: " << buf;
+            anyOpenSslError = true;
+        }
+        if (!anyOpenSslError)
+            LOG(Log::ERR) << "  (OpenSSL error queue empty -- the platform-init failure is not a failing OpenSSL call)";
+    }
+#endif
     CalculatedVariables::Engine::initialize();
     return ret;
 }

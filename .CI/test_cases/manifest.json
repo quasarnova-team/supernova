@@ -1,0 +1,206 @@
+{
+  "_doc": "Single source of truth for the quasar framework test matrix. Each case declares its driver inputs (design/config/oracle/device_sources/generate_devices) and its 'kind' (oracle|smoke), which decides how a result is judged. Cells are (case x backend x os x compiler); .CI/expand_matrix.py flattens them into a GitHub Actions strategy.matrix, and run_test_case.py --case reads the SAME file so a case is declared exactly once. The CI image of a cell is ghcr.io/<owner>/quasar-ci:<os>-<backend>[-<toolkit_version>]. Backend coverage is symmetric -- every case runs on both o6 and uasdk now that the backends are at feature parity (a short per-cell exclude would capture any genuine semantic delta; there are none today). PR/nightly tiers and the UASDK-version axis are layered on top.",
+  "default_os": "alma10",
+  "_default_arches_doc": "Arches the PRIMARY OS (default_os) is fully tested on at PR. x86_64 is the baseline; arm64 adds the full per-case PR sweep on free native arm runners (only the PR-default uasdk version -- the one with arch images -- plus o6). alma10 is the primary platform; alma9 is reduced to a default_design smoke (see default_design.extra_cells).",
+  "default_arches": [
+    "x86_64",
+    "arm64"
+  ],
+  "_nightly_os_doc": "OSes that mirror the FULL case set at nightly beyond default_os. Empty now: alma10 is the default_os (full at PR on x86_64 + arm64) and alma9 is only a default_design smoke -- there is no third EL to mirror. An entry would be a bare \"almaNN\" (full case set x every uasdk version) or {\"os\":...,\"versions\":[...]} to restrict versions.",
+  "nightly_os": [],
+  "_nightly_compilers_doc": "Extra compiler(s) run over the FULL case set at nightly tier (compiler-portability coverage beyond the default gcc). NOT narrowed by representative_cases: a compiler can break on case-specific generated C++ (templates/headers), so every case is compiled under the alt compiler. clang on alma10/o6 -- uasdk static libs are gcc-built so clang is kept to o6 to avoid a cross-compiler-ABI variable.",
+  "nightly_compilers": [
+    {
+      "compiler": "clang",
+      "os": "alma10",
+      "backends": [
+        "o6"
+      ]
+    }
+  ],
+  "_nightly_arches_doc": "Extra nightly-only CPU arches on native GitHub arm64 runners (ubuntu-24.04-arm) with arch-tagged images, narrowed by representative_cases. Empty now: arm64 coverage moved to default_arches (full per-case PR sweep on default_os = alma10, both backends), so there is no separate nightly arch axis. Re-add e.g. {\"arch\":\"arm64\",\"os\":\"alma9\",\"versions\":[...]} to test arm64 on a non-primary OS.",
+  "nightly_arches": [],
+  "_representative_cases_doc": "Broad-surface cases re-run on the one case-INDEPENDENT axis that stays narrowed: the non-default/nightly uasdk versions (1.6.5 / 2.0.3) on default_os. That delta is SDK-level, so the full per-case sweep stays on default_os + the default uasdk version, and only this subset re-runs against the older/newer SDKs. Chosen to exercise the distinct codegen/runtime surfaces (plain + async methods, cache + source variables). NOTE: the default arches (default_arches, incl. arm64) and the alt compiler (nightly_compilers, clang) are deliberately NOT narrowed -- the primary platform and a compiler can each fail on case-specific generated code, so both keep the full case set. Remove this key (or set []) to run the full case set against every uasdk version too.",
+  "representative_cases": [
+    "methods",
+    "async_methods",
+    "cache_variables",
+    "source_variables"
+  ],
+  "backends": {
+    "o6": {
+      "compat_branch": "v1.5.7"
+    },
+    "uasdk": {}
+  },
+  "toolkits": {
+    "uasdk": [
+      {
+        "version": "1.8.9",
+        "tier": "pr"
+      },
+      {
+        "version": "1.6.5",
+        "tier": "nightly"
+      },
+      {
+        "version": "2.0.3",
+        "tier": "nightly"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "default_design",
+      "kind": "oracle",
+      "oracle": "test_default_quasar_design/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ],
+      "extra_cells": [
+        {
+          "backend": "o6",
+          "os": "alma9"
+        },
+        {
+          "backend": "uasdk",
+          "os": "alma9",
+          "version": "1.8.9"
+        }
+      ]
+    },
+    {
+      "name": "methods",
+      "kind": "oracle",
+      "design": "test_methods/Design.xml",
+      "config": "test_methods/config.xml",
+      "generate_devices": true,
+      "oracle": "test_methods/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "async_methods",
+      "kind": "oracle",
+      "design": "test_async_methods/Design.xml",
+      "config": "test_async_methods/config.xml",
+      "generate_devices": true,
+      "oracle": "test_methods/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "cache_variables",
+      "kind": "oracle",
+      "design": "test_cache_variables/Design.xml",
+      "config": "test_cache_variables/config.xml",
+      "generate_devices": true,
+      "device_sources": "test_cache_variables",
+      "oracle": "test_cache_variables/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "source_variables",
+      "kind": "oracle",
+      "design": "test_source_variables/Design.xml",
+      "config": "test_source_variables/config.xml",
+      "generate_devices": true,
+      "oracle": "test_source_variables/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "config_entries",
+      "kind": "oracle",
+      "design": "test_config_entries/Design.xml",
+      "config": "test_config_entries/config.xml",
+      "generate_devices": true,
+      "oracle": "test_config_entries/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "calculated_variables",
+      "kind": "oracle",
+      "design": "test_calculated_variables/Design.xml",
+      "config": "test_calculated_variables/config.xml",
+      "oracle": "test_calculated_variables/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "recurrent_hasobjects",
+      "kind": "oracle",
+      "design": "test_recurrent_hasobjects/Design.xml",
+      "config": "test_recurrent_hasobjects/config.xml",
+      "generate_devices": true,
+      "oracle": "test_recurrent_hasobjects/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "single_variable_node",
+      "kind": "oracle",
+      "design": "test_single_variable_node/Design.xml",
+      "config": "test_single_variable_node/config.xml",
+      "generate_devices": true,
+      "oracle": "test_single_variable_node/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "instantiation_from_design",
+      "kind": "oracle",
+      "design": "test_instantiation_from_design/Design.xml",
+      "config": "test_instantiation_from_design/config.xml",
+      "generate_devices": true,
+      "oracle": "test_instantiation_from_design/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "config_restrictions",
+      "kind": "oracle",
+      "design": "test_config_restrictions/Design.xml",
+      "oracle": "test_config_restrictions/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    },
+    {
+      "name": "defaulted_instance_name",
+      "kind": "oracle",
+      "design": "test_defaulted_instance_name/Design.xml",
+      "config": "test_defaulted_instance_name/config.xml",
+      "oracle": "test_defaulted_instance_name/reference_ns2.xml",
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
+    }
+  ],
+  "probes": {
+    "_doc": "Toolchain-frontier probes (nightly/dispatch, unpinned latest CMake). Generalize the OPCUA-3442/3443/3444 class: cmake_frontier (ci.yml) = quasar configure on newest CMake (floor job covers 3.16); compat_standalone_frontier (ci.yml) + compat-standalone-frontier-windows (windows.yml) = standalone open62541-compat with real find_package discovery. Advisory until the compat pin >= v1.5.8, then flip enforcing (drop continue-on-error)."
+  }
+}
