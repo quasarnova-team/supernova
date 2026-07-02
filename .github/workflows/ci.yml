@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, ci-matrix-reshape]
+    branches: [master]
   pull_request:
     branches: [master]
   schedule:
@@ -82,10 +82,6 @@ jobs:
       - if: matrix.compiler == 'clang'
         run: dnf install -y clang
       - run: .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
-      - if: always()
-        run: |
-          echo "=== dump.xml DataType serialization sample ==="
-          grep -m6 'DataType=' build/bin/dump.xml 2>/dev/null || echo "(no dump / no DataType attr)"
       - if: always()
         uses: actions/upload-artifact@v4
         with:

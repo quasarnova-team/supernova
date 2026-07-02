@@ -1,13 +1,12 @@
 name: build-ci-images
 
-# SANDBOX SCAFFOLDING (parasxos fork). Builds the token-free open62541 CI
-# images and publishes them to ghcr.io/<owner>/quasar-ci:<os>-o6, which ci.yml
-# pulls. The uasdk images build FROM these + the Unified Automation SDK fetched
-# token-free from a self-hosted UASDK_URL (see build-uasdk below). At landing
-# this moves to the images repo.
+# Builds the token-free open62541 CI images and publishes them to
+# ghcr.io/<owner>/quasar-ci:<os>-o6, which ci.yml pulls. The uasdk images build
+# FROM these + the Unified Automation SDK (private release assets, UASDK_DL_TOKEN;
+# gated on HAS_UASDK). Longer term this belongs in the quasar-team/images repo.
 on:
   push:
-    branches: [ci-matrix-reshape]
+    branches: [master]
     paths:
       - '.CI/docker/**'
       - '.github/workflows/build-ci-images.yml'

@@ -12,7 +12,7 @@ name: CI (Windows Server 2025)
 
 on:
   push:
-    branches: [master, ci-matrix-reshape]
+    branches: [master]
   schedule:
     - cron: '0 4 * * *'   # nightly: full Windows case set (ci.yml Linux nightly is 03:00)
   workflow_dispatch:
