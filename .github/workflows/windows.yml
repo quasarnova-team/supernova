@@ -319,6 +319,10 @@ jobs:
   # built once via b2 clang-win (versioned layout: findable ONLY by BoostConfig,
   # invisible to module-mode FindBoost — the exact geometry of OPCUA-3442) and
   # cached. Advisory until the compat pin carries the fixes (>= v1.5.8).
+  # Generator choice is deliberate: Ninja passes CMAKE_C_FLAGS verbatim to cl
+  # (hard D8021 on GNU flags) while the VS generator's flag mapping lets cl merely
+  # warn (D9002) — proven on the OPCUA-3444 tree (repro run 28575458477: same
+  # tree, Ninja fails, VS generator builds). Ninja = the strict probe.
   compat-standalone-frontier-windows:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
