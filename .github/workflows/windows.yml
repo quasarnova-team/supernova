@@ -35,16 +35,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cases: ${{ steps.gen.outputs.cases }}
+      uasdk_combos: ${{ steps.gen.outputs.uasdk_combos }}
     steps:
       - uses: actions/checkout@v4
       - id: gen
+        # cases: the per-event case list (as before). uasdk_combos: the (case x sdk_version)
+        # include-list for the uasdk cells. The version axis is narrowed the same way the
+        # Linux cube narrows non-default uasdk versions: the FULL case set runs only against
+        # the newest SDK (2.0.3); 1.6.5/1.8.9 re-run just the manifest's representative_cases
+        # (the version delta is SDK-level, not case-level, so re-sweeping every case per SDK
+        # buys nothing). No 2.0.2 cell: no Windows source bundle was released for it. On push
+        # (default_design smoke) every version still gets the one smoke case, so all three
+        # SDK builds stay exercised per-commit.
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo 'cases=["default_design"]' >> "$GITHUB_OUTPUT"
-          else
-            echo "cases=$(python3 -c 'import json;print(json.dumps([c["name"] for c in json.load(open(".CI/test_cases/manifest.json"))["cases"]]))')" >> "$GITHUB_OUTPUT"
-          fi
-      - run: echo "Windows cases -> ${{ steps.gen.outputs.cases }}"
+          python3 - '${{ github.event_name }}' <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, sys
+          event = sys.argv[1]
+          manifest = json.load(open(".CI/test_cases/manifest.json"))
+          cases = ["default_design"] if event == "push" else [c["name"] for c in manifest["cases"]]
+          full_version = "2.0.3"
+          alt_versions = ["1.6.5", "1.8.9"]
+          alt_cases = cases if event == "push" else [c for c in manifest["representative_cases"] if c in cases]
+          combos = [{"case": c, "sdk_version": full_version} for c in cases]
+          combos += [{"case": c, "sdk_version": v} for v in alt_versions for c in alt_cases]
+          print("cases=" + json.dumps(cases))
+          print("uasdk_combos=" + json.dumps(combos))
+          EOF
+      - run: |
+          echo "Windows cases -> ${{ steps.gen.outputs.cases }}"
+          echo "Windows uasdk combos -> ${{ steps.gen.outputs.uasdk_combos }}"
 
   framework-invariants-windows:
     runs-on: windows-2025
@@ -119,21 +138,34 @@ jobs:
           path: build/bin/dump.xml
           if-no-files-found: ignore
 
-  # uasdk × Windows. Builds the Unified Automation UA Toolkit x64 from source
-  # (the source builds for the active MSVC arch; we reuse the x64 setup-quasar-windows
-  # env) and then the uasdk-backed quasar server, and runs the same backend-agnostic
-  # uasak_dump oracle. Gated on HAS_WINDOWS_UASDK + the UASDK_DL_TOKEN secret, because
-  # the commercial SDK bundle lives in a private paris-atlas-dcs release (downloaded with
-  # that token). The SDK source-build step is a first draft -- its first real CI run will
-  # surface the SDK's Windows cmake specifics (OpenSSL/LibXml2 discovery, install layout)
-  # to iterate, exactly like the o6 chain did.
+  # uasdk × Windows, over the SDK version axis {1.6.5, 1.8.9, 2.0.3}. Builds the
+  # Unified Automation UA Toolkit x64 from the vendor Windows source bundle (the
+  # source builds for the active MSVC arch; we reuse the x64 setup-quasar-windows
+  # env), installs it, and uploads one artifact per version for the case cells
+  # below. Gated on HAS_WINDOWS_UASDK + the UASDK_DL_TOKEN secret, because the
+  # commercial SDK bundles live in private paris-atlas-dcs releases (downloaded
+  # with that token). Per-version deltas (bundle format, OpenSSL injection, source
+  # patches) are handled inline in the build step; the known 1.6.5 fix chain is
+  # kept and made version-tolerant (each patch no-ops when its pattern is absent).
   windows-uasdk-sdk:
     if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
     runs-on: windows-2025
+    name: uasdk sdk build · ${{ matrix.sdk_version }}
     strategy:
       fail-fast: false
       matrix:
-        sdk_version: ['1.6.5']
+        # 1.6.5 ships as the legacy NSIS self-extractor release; 1.8.9/2.0.3 are the
+        # modern plain-.zip cpp bundles. (No 2.0.2: no Windows source bundle exists.)
+        include:
+          - sdk_version: '1.6.5'
+            release_tag: uasdk-1.6.5-win32-x86-vs2015-src
+            asset_pattern: '*.exe'
+          - sdk_version: '1.8.9'
+            release_tag: uasdk-1.8.9-win-src
+            asset_pattern: uasdkcppbundle-src-windows-v1.8.9-650.zip
+          - sdk_version: '2.0.3'
+            release_tag: uasdk-2.0.3-win-src
+            asset_pattern: uasdkcppbundle-src-windows-v2.0.3-681.zip
     env:
       QUASAR_CMAKE_GENERATOR: Ninja
       CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
@@ -152,21 +184,25 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           function chk($w){ if ($LASTEXITCODE -ne 0) { throw "$w failed (exit $LASTEXITCODE)" } }
-          gh release download "uasdk-${{ matrix.sdk_version }}-win32-x86-vs2015-src" --repo paris-atlas-dcs/uasdk-paris-tools --pattern '*.exe' --dir C:\uasdk-dl; chk "download SDK bundle"
-          $exe = (Get-ChildItem C:\uasdk-dl -Filter '*.exe' | Select-Object -First 1).FullName
-          # NSIS self-extractor -> 7z is preinstalled on windows runners.
-          7z x -y -oC:\uasdk-src "$exe" > $null; chk "extract SDK"
+          gh release download "${{ matrix.release_tag }}" --repo paris-atlas-dcs/uasdk-paris-tools --pattern "${{ matrix.asset_pattern }}" --dir C:\uasdk-dl; chk "download SDK bundle"
+          $bundle = (Get-ChildItem C:\uasdk-dl | Select-Object -First 1).FullName
+          # 1.6.5 ships as an NSIS self-extractor (.exe); 1.8.9/2.0.3 are plain .zip bundles
+          # (top dir uasdkcppbundle-src-windows-v<ver>-<build>/). 7z (preinstalled on windows
+          # runners) opens both.
+          7z x -y -oC:\uasdk-src "$bundle" > $null; chk "extract SDK"
           $root = (Get-ChildItem C:\uasdk-src -Recurse -Filter CMakeLists.txt | Sort-Object { $_.FullName.Length } | Select-Object -First 1).Directory.FullName
           Write-Host "SDK source root: $root"
           # Forward slashes: these paths flow into the SDK's generated cmake_install.cmake via
           # FindUaOpenSSL's install(FILES ...) (OpenSSL/libxml2 DLLs). With backslashes, CMake
           # parses 'C:\vcpkg\...' as invalid string escapes (\v, \x) -> install syntax error.
           $vi = 'C:/vcpkg/installed/x64-windows'
+          $is2x = '${{ matrix.sdk_version }}'.StartsWith('2.')
           # The 1.6.5 bundle's SetThirdPartyPaths only recognizes up to vs2019 and FATALs on
           # the runner's vc143. We follow the quasar-team's Windows approach -- provide x64
           # OpenSSL/libxml2 externally (vcpkg), so the bundle's win32/vs2015 third-party isn't
           # needed -- and patch the unrecognized-VS FATAL to default COMPILER_DIR=vs2019 so
-          # configure proceeds.
+          # configure proceeds. Version-tolerant: .Replace is a no-op where a newer bundle's
+          # SetThirdPartyPaths doesn't carry that exact FATAL.
           $stp = (Get-ChildItem "$root\cmake" -Filter SetThirdPartyPaths.cmake -ErrorAction SilentlyContinue | Select-Object -First 1)
           if ($stp) {
             (Get-Content $stp.FullName -Raw).Replace(
@@ -174,7 +210,7 @@ jobs:
               "set(COMPILER_DIR vs2019)`n                message(STATUS `"VS unrecognized; defaulting COMPILER_DIR=vs2019 (external third-party provided). `"") | Set-Content $stp.FullName
             Write-Host "patched SetThirdPartyPaths for vc143"
           }
-          # The 1.6.5 SDK declares cmake_minimum_required(VERSION 2.8.x) in every subdir/.cmake,
+          # The 1.x SDKs declare cmake_minimum_required(VERSION 2.8.x) in every subdir/.cmake,
           # which CMake 4.x rejects ("compatibility with CMake < 3.5 removed"). CMAKE_POLICY_VERSION_MINIMUM=3.5
           # DOES downgrade that to a harmless deprecation warning -- but only if it actually takes
           # effect. The real blocker was the inherited vcpkg CMAKE_TOOLCHAIN_FILE (job env): under
@@ -182,60 +218,79 @@ jobs:
           # before the override applies, so every per-file minimum re-surfaced as a hard error. We
           # don't need vcpkg's toolchain here (OpenSSL/libxml2 are passed explicitly below), so we
           # drop it for the SDK configure (just before cmake) -- then the override does its job.
-          # Validated locally on the extracted bundle with cmake 4.0.3: 2.8.0 -> deprecation warning,
-          # configure proceeds past the whole cmake_minimum_required + FindUaOpenSSL cascade.
-          # add_subdirectory(examples) is unconditional, so comment it out -- we don't build examples.
+          # Validated locally on the extracted 1.6.5 bundle with cmake 4.0.3: 2.8.0 -> deprecation
+          # warning, configure proceeds past the whole cmake_minimum_required + FindUaOpenSSL
+          # cascade. Both are harmless no-ops on 2.0.3's modern CMakeLists.
+          # add_subdirectory(examples) is unconditional in 1.x, so comment it out -- we don't
+          # build examples (the -replace no-ops where the bundle has no such line).
           (Get-Content "$root\CMakeLists.txt" -Raw) -replace 'add_subdirectory\(examples\)', '# add_subdirectory(examples)  # disabled for CI' | Set-Content "$root\CMakeLists.txt"
-          Write-Host "disabled examples subdirectory"
-          # libxml2 >= 2.12 changed xmlGetLastError() to return 'const xmlError *'; the 2019-era SDK
-          # assigns it to a non-const xmlErrorPtr (xmldocument.cpp:643/649) -> C2440 under MSVC with
-          # the modern vcpkg libxml2. Both locals only read ->message/->line, so make them const.
+          Write-Host "disabled examples subdirectory (if present)"
+          # libxml2 >= 2.12 changed xmlGetLastError() to return 'const xmlError *'; the 2019-era
+          # 1.6.5 SDK assigns it to a non-const xmlErrorPtr (xmldocument.cpp:643/649) -> C2440
+          # under MSVC with the modern vcpkg libxml2. Both locals only read ->message/->line, so
+          # make them const. Conditional: only patch when the pre-const pattern is actually
+          # present (newer bundles may be const-clean, and 2.0.x folds the xmlparser into
+          # uabasecpp so the file may not exist at all).
           $xd = "$root\src\uabase\xmlparser\xmldocument.cpp"
-          if (Test-Path $xd) {
+          if ((Test-Path $xd) -and ((Get-Content $xd -Raw) -match 'xmlErrorPtr pError = xmlGetLastError\(\);')) {
             (Get-Content $xd -Raw) -replace 'xmlErrorPtr pError = xmlGetLastError\(\);', 'const xmlError* pError = xmlGetLastError();' | Set-Content $xd
             Write-Host "patched xmldocument.cpp for libxml2 const xmlError*"
+          } else {
+            Write-Host "libxml2 const xmlError* patch not needed for this bundle"
           }
           # Build x64 with vcpkg x64 OpenSSL/libxml2 (the team's flags: PKI_WIN32, bcrypt,
           # /FIconio.h). Dynamic vcpkg libs -> their DLLs go on PATH for the oracle run.
-          # 1.6.5's FindUaOpenSSL honors explicit OPENSSL_INCLUDE_DIR/SSL_LIBRARY/CRYPTO_LIBRARY/
-          # VERSION (NOT OPENSSL_ROOT_DIR, which is the 2.0.2 convention) -- set those so it uses
-          # the vcpkg x64 OpenSSL and skips the bundled win64 search. libxml2 likewise via
-          # LIBXML2_INCLUDE_DIR/LIBXML2_LIBRARIES.
           # Drop the inherited vcpkg toolchain so CMAKE_POLICY_VERSION_MINIMUM=3.5 is honored (see above);
           # OpenSSL/libxml2 are supplied explicitly via -D and CMAKE_PREFIX_PATH instead.
           Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
-          # NOTE: quote the dotted numeric values -- PowerShell splits a bare -DFOO=3.5 into
-          # "-DFOO=3" + ".5" (cmake then sees CMAKE_POLICY_VERSION_MINIMUM="3" -> invalid, and
-          # OPENSSL_VERSION="3" -> FindUaOpenSSL list-index error). Quoting keeps them intact.
+          # OpenSSL injection differs per major. 1.6.5/1.8.9: FindUaOpenSSL honors explicit
+          # OPENSSL_INCLUDE_DIR/SSL_LIBRARY/CRYPTO_LIBRARY/VERSION (NOT OPENSSL_ROOT_DIR) and
+          # then skips the bundled third-party search. 2.0.3: FindUaOpenSSL is a deprecation
+          # stub and the SDK uses standard find_package(OpenSSL) -> OPENSSL_ROOT_DIR is the
+          # right knob. libxml2 stays explicit via LIBXML2_INCLUDE_DIR/LIBXML2_LIBRARIES for
+          # every version (on 2.0.x it is simply unused).
+          # NOTE on dotted numeric values: PowerShell splits a BARE -DFOO=3.5 command-line token
+          # into "-DFOO=3" + ".5" (cmake then sees CMAKE_POLICY_VERSION_MINIMUM="3" -> invalid,
+          # and OPENSSL_VERSION="3" -> FindUaOpenSSL list-index error). Quoted tokens and array
+          # elements reach cmake intact -- keep it that way.
+          if ($is2x) {
+            $sslArgs = @("-DOPENSSL_ROOT_DIR=$vi")
+          } else {
+            $sslArgs = @("-DOPENSSL_INCLUDE_DIR=$vi/include", "-DOPENSSL_SSL_LIBRARY=$vi/lib/libssl.lib", "-DOPENSSL_CRYPTO_LIBRARY=$vi/lib/libcrypto.lib", "-DOPENSSL_VERSION=3.5.5")
+          }
           cmake -S "$root" -B C:\uasdk-b -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM="3.5" `
             -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_STACK=OFF `
             -DBUILD_EXAMPLES=off -DBUILD_UACLIENTCPP_APP=off -DBUILD_UASERVERCPP_APP=off `
             -DUASTACK_WITH_PKI_WIN32=ON -DUASTACK_CLIENTAPI_ENABLED=ON -DBUILD_UACLIENTCPP=ON `
-            -DOPENSSL_INCLUDE_DIR="$vi/include" -DOPENSSL_SSL_LIBRARY="$vi/lib/libssl.lib" -DOPENSSL_CRYPTO_LIBRARY="$vi/lib/libcrypto.lib" -DOPENSSL_VERSION="3.5.5" `
+            @sslArgs `
             -DLIBXML2_INCLUDE_DIR="$vi/include/libxml2" -DLIBXML2_LIBRARIES="$vi/lib/libxml2.lib" `
             -DCMAKE_CXX_FLAGS="/FIconio.h" -DCMAKE_EXE_LINKER_FLAGS="/DEFAULTLIB:bcrypt.lib" `
             -DCMAKE_PREFIX_PATH="$vi" -DCMAKE_INSTALL_PREFIX=C:/uasdk; chk "uasdk configure"
           cmake --build C:\uasdk-b; chk "uasdk build"
           cmake --install C:\uasdk-b; chk "uasdk install"
         shell: pwsh
-      - name: Upload the built UASDK (consumed once per case by the cells below)
+      - name: Upload the built UASDK ${{ matrix.sdk_version }} (consumed per case by the cells below)
         uses: actions/upload-artifact@v4
         with:
-          name: uasdk-win-${{ matrix.sdk_version }}
+          name: uasdk-windows-${{ matrix.sdk_version }}
           path: C:\uasdk
 
-  # Fan the full case set out over the pre-built SDK: download it, build the uasdk server,
-  # run the same backend-agnostic uasak_dump oracle (run_test_case.py applies the case +
-  # normalizes the open62541>=1.5 quoted NodeIds). The SDK is built ONCE (above), not per case.
+  # Fan the case set out over the pre-built SDKs: download the right version artifact,
+  # build the uasdk server (uasdk_win_configuration.cmake detects the 1.x-vs-2.x install
+  # layout from the artifact), run the same backend-agnostic uasak_dump oracle
+  # (run_test_case.py applies the case + normalizes the open62541>=1.5 quoted NodeIds).
+  # Each SDK version is built ONCE (above), not per case. The (case x sdk_version) cells
+  # come from windows-matrix.uasdk_combos: full case set on 2.0.3 only, representative
+  # subset on 1.6.5/1.8.9 (see the narrowing rationale in windows-matrix).
   framework-cases-windows-uasdk:
     needs: [windows-matrix, windows-uasdk-sdk]
     if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
     runs-on: windows-2025
-    name: uasdk windows · ${{ matrix.case }}
+    name: uasdk ${{ matrix.sdk_version }} windows · ${{ matrix.case }}
     strategy:
       fail-fast: false
       matrix:
-        case: ${{ fromJSON(needs.windows-matrix.outputs.cases) }}
+        include: ${{ fromJSON(needs.windows-matrix.outputs.uasdk_combos) }}
     env:
       QUASAR_CMAKE_GENERATOR: Ninja
       CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
@@ -250,10 +305,10 @@ jobs:
           python-version: '3.x'
       - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
         uses: ./.github/actions/setup-quasar-windows
-      - name: Download the pre-built UASDK
+      - name: Download the pre-built UASDK ${{ matrix.sdk_version }}
         uses: actions/download-artifact@v4
         with:
-          name: uasdk-win-1.6.5
+          name: uasdk-windows-${{ matrix.sdk_version }}
           path: C:\uasdk
       - name: Verify the SDK artifact is present
         run: if (-not (Test-Path C:\uasdk\lib)) { throw "UASDK artifact missing C:\uasdk\lib" }
@@ -307,7 +362,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windump-uasdk-${{ matrix.case }}
+          name: windump-uasdk-${{ matrix.sdk_version }}-${{ matrix.case }}
           path: build/bin/dump.xml
           if-no-files-found: ignore
 
