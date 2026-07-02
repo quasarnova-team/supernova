@@ -22,9 +22,9 @@
 # open6_win_configuration.cmake (same x64 deps, provisioned by the
 # setup-quasar-windows composite action). Only the OPCUA section differs: it
 # targets the UA Toolkit at $ENV{OPCUA_TOOLKIT_PATH} instead of the bundled
-# open62541. Layout + lib names verified against the v1.6.5 source bundle:
-# include/{uabasecpp,uaclientcpp,uamodels,uapkicpp,uaservercpp,uastack,xmlparsercpp}
-# and lib/{uamodule,coremodule,uabasecpp,uastack,uapkicpp,xmlparsercpp,...}.lib
+# open62541, and detects the installed SDK layout (1.x vs 2.0.x) the same way
+# the Linux uasdk-eval.cmake does -- so one config serves 1.6.5, 1.8.9 and
+# 2.0.3 (see the OPCUA section below for the per-major include/lib sets).
 # (NOTE: Windows libs are unprefixed -- uamodule.lib, not libuamodule.lib).
 
 message("using build configuration from uasdk_win_configuration.cmake")
@@ -144,21 +144,32 @@ if( NOT DEFINED ENV{OPCUA_TOOLKIT_PATH} )
 endif()
 SET( OPCUA_TOOLKIT_PATH $ENV{OPCUA_TOOLKIT_PATH} )
 message(STATUS "Using UA Toolkit at OPCUA_TOOLKIT_PATH [${OPCUA_TOOLKIT_PATH}]")
-include_directories(
-	${OPCUA_TOOLKIT_PATH}/include
-	${OPCUA_TOOLKIT_PATH}/include/uabasecpp
-	${OPCUA_TOOLKIT_PATH}/include/uaservercpp
-	${OPCUA_TOOLKIT_PATH}/include/uaclientcpp
-	${OPCUA_TOOLKIT_PATH}/include/uamodels
-	${OPCUA_TOOLKIT_PATH}/include/uapkicpp
-	${OPCUA_TOOLKIT_PATH}/include/uastack
-	${OPCUA_TOOLKIT_PATH}/include/xmlparsercpp
-)
-# Windows UASDK static libs are UNPREFIXED (uamodule.lib, not libuamodule.lib),
-# with a 'd' debug suffix. Reference the actual files under ${OPCUA_TOOLKIT_PATH}/lib.
+# The installed UA SDK module set differs across majors -- same detection idea as the
+# Linux uasdk-eval.cmake, keyed on the 1.x-only uamodule lib (unprefixed on Windows).
+# 1.x (1.6.5/1.8.9) ships uamodule + separate uapkicpp/xmlparsercpp; 2.0.x folds
+# pki + xmlparser into uabasecpp, folds uamodule into coremodule, and REQUIRES the
+# additional low-level embeddedstack lib (ua_malloc/ua_buffer_*/ua_decoder_context_*,
+# which uabasecpp links against). MSVC's linker resolves the mutually-referential
+# 2.0.x static modules without ld-style --start-group, so a plain list suffices.
+# Windows UASDK static libs are UNPREFIXED (uamodule.lib, not libuamodule.lib), with
+# a 'd' debug suffix in the 1.x layout; the CI SDK artifact is a Release build, so
+# the 2.0.x debug list mirrors release (as the Linux config does).
+if( EXISTS "${OPCUA_TOOLKIT_PATH}/lib/uamodule.lib" )
+	# UA SDK 1.x layout
+	SET( _UASDK_INCDIRS uabasecpp uaservercpp uaclientcpp uamodels uapkicpp uastack xmlparsercpp )
+	SET( OPCUA_TOOLKIT_LIBS_RELEASE uamodule.lib coremodule.lib uabasecpp.lib uastack.lib uapkicpp.lib xmlparsercpp.lib ws2_32 rpcrt4 crypt32 )
+	SET( OPCUA_TOOLKIT_LIBS_DEBUG   uamoduled.lib coremoduled.lib uabasecppd.lib uastackd.lib uapkicppd.lib xmlparsercppd.lib ws2_32 rpcrt4 crypt32 )
+else()
+	# UA SDK 2.0.x layout
+	SET( _UASDK_INCDIRS uabasecpp uaservercpp uastack uaclientcpp )
+	SET( OPCUA_TOOLKIT_LIBS_RELEASE coremodule.lib uabasecpp.lib uastack.lib embeddedstack.lib ws2_32 rpcrt4 crypt32 )
+	SET( OPCUA_TOOLKIT_LIBS_DEBUG   ${OPCUA_TOOLKIT_LIBS_RELEASE} )
+endif()
+include_directories( ${OPCUA_TOOLKIT_PATH}/include )
+foreach( _d ${_UASDK_INCDIRS} )
+	include_directories( ${OPCUA_TOOLKIT_PATH}/include/${_d} )
+endforeach()
 link_directories( ${OPCUA_TOOLKIT_PATH}/lib )
-SET( OPCUA_TOOLKIT_LIBS_RELEASE uamodule.lib coremodule.lib uabasecpp.lib uastack.lib uapkicpp.lib xmlparsercpp.lib ws2_32 rpcrt4 crypt32 )
-SET( OPCUA_TOOLKIT_LIBS_DEBUG   uamoduled.lib coremoduled.lib uabasecppd.lib uastackd.lib uapkicppd.lib xmlparsercppd.lib ws2_32 rpcrt4 crypt32 )
 
 #------
 #General
