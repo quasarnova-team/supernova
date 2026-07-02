@@ -110,9 +110,13 @@ def expand(manifest):
         # only_versions (set) restricts which uasdk toolkit versions are emitted here.
         versions = toolkits.get(backend)
         if versions:
+            # A toolkit entry may carry its own 'cases' list (e.g. a version on the way
+            # out runs only a smoke case); absent = the full case set.
             return [_cell(manifest, case, backend, os_name, compiler,
                           tk['version'], force_tier or tk.get('tier', base_tier), arch=arch)
-                    for tk in versions if not only_versions or tk['version'] in only_versions]
+                    for tk in versions
+                    if (not only_versions or tk['version'] in only_versions)
+                    and (not tk.get('cases') or case['name'] in tk['cases'])]
         return [_cell(manifest, case, backend, os_name, compiler, None, force_tier or base_tier, arch=arch)]
 
     cells = []
@@ -120,13 +124,12 @@ def expand(manifest):
         case_tier = case.get('tier', 'pr')
         for backend in case.get('backends', []):
             for arch in default_arches:
-                # default_os x86_64: a non-representative case runs only the PR-tier (default)
-                # uasdk version; non-default versions re-run just the representative cases. o6 (no
-                # toolkit versions) always runs every case. On an alt default arch (e.g. arm64)
-                # only the PR-default version has an arch image, so every case runs there against
-                # just that version (o6 + uasdk-<default>) -- the full per-case set, PR tier.
+                # default_os x86_64: every toolkit version fans out per its own 'cases'
+                # list (absent = full case set) at its own tier. On an alt default arch
+                # (e.g. arm64) only the PR-default version has an arch image, so cases run
+                # there against just that version (o6 + uasdk-<default>), PR tier.
                 if arch == 'x86_64':
-                    only_v = None if (in_rep(case) or representative == set()) else pr_uasdk_versions
+                    only_v = None
                 else:
                     only_v = pr_uasdk_versions
                 cells += emit(case, backend, default_os, 'gcc', case_tier,

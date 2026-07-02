@@ -1,7 +1,8 @@
 name: CI (Windows Server 2025)
 
-# Windows Server 2025 track (token-free; no UASDK/CERN token).
-#   * framework-invariants-windows -- GREEN: hermetic Python codegen tests.
+# Windows Server 2025 track. WS2025 is a MAIN platform: coverage is symmetric with
+# alma10 by construction (both derive from .CI/test_cases/manifest.json).
+#   * framework-invariants-windows -- hermetic Python codegen tests.
 #   * framework-cases-windows -- full o6 oracle: build server + uasak_dump, run,
 #     dump address space, compare to the reference NodeSet. The build environment
 #     is provisioned in one move by the ./.github/actions/setup-quasar-windows
@@ -12,6 +13,8 @@ name: CI (Windows Server 2025)
 
 on:
   push:
+    branches: [master]
+  pull_request:
     branches: [master]
   schedule:
     - cron: '0 4 * * *'   # nightly: full Windows case set (ci.yml Linux nightly is 03:00)
@@ -27,43 +30,51 @@ permissions:
 
 jobs:
 
-  # Derive the Windows case list by event: push -> just default_design (fast per-commit
-  # smoke); schedule/dispatch -> all manifest cases (full Windows coverage, the Windows
-  # analog of the Linux nightly tier). One source of truth -- the same manifest the Linux
-  # cube uses.
+  # Derive the Windows matrix from the SAME manifest as the Linux cube, so WS2025 and
+  # alma10 (the two main platforms) stay symmetric BY CONSTRUCTION: o6 and every PR-tier
+  # uasdk version run the full case set on push/PR; schedule/dispatch adds the
+  # nightly-tier versions at their own per-version case depth (a version on the way out
+  # carries cases: [default_design] in the manifest). The SDK build matrix is derived
+  # from the same pass, so push/PR builds only the SDKs it needs.
   windows-matrix:
     runs-on: ubuntu-latest
     outputs:
       cases: ${{ steps.gen.outputs.cases }}
       uasdk_combos: ${{ steps.gen.outputs.uasdk_combos }}
+      sdk_matrix: ${{ steps.gen.outputs.sdk_matrix }}
     steps:
       - uses: actions/checkout@v4
       - id: gen
-        # cases: the per-event case list (as before). uasdk_combos: the (case x sdk_version)
-        # include-list for the uasdk cells. The version axis is narrowed the same way the
-        # Linux cube narrows non-default uasdk versions: the FULL case set runs only against
-        # the newest SDK (2.0.3); 1.6.5/1.8.9 re-run just the manifest's representative_cases
-        # (the version delta is SDK-level, not case-level, so re-sweeping every case per SDK
-        # buys nothing). No 2.0.2 cell: no Windows source bundle was released for it. On push
-        # (default_design smoke) every version still gets the one smoke case, so all three
-        # SDK builds stay exercised per-commit.
         run: |
           python3 - '${{ github.event_name }}' <<'EOF' >> "$GITHUB_OUTPUT"
           import json, sys
           event = sys.argv[1]
           manifest = json.load(open(".CI/test_cases/manifest.json"))
-          cases = ["default_design"] if event == "push" else [c["name"] for c in manifest["cases"]]
-          full_version = "2.0.3"
-          alt_versions = ["1.6.5", "1.8.9"]
-          alt_cases = cases if event == "push" else [c for c in manifest["representative_cases"] if c in cases]
-          combos = [{"case": c, "sdk_version": full_version} for c in cases]
-          combos += [{"case": c, "sdk_version": v} for v in alt_versions for c in alt_cases]
-          print("cases=" + json.dumps(cases))
+          all_cases = [c["name"] for c in manifest["cases"]]
+          pr_only = event in ("push", "pull_request")
+          # vendor Windows source bundles, hosted as private releases (downloaded with
+          # UASDK_DL_TOKEN). 1.6.5 ships as the legacy NSIS self-extractor; the modern
+          # bundles are plain .zip. (No 2.0.2 bundle exists.)
+          bundles = {
+              "1.6.5": {"release_tag": "uasdk-1.6.5-win32-x86-vs2015-src", "asset_pattern": "*.exe"},
+              "1.8.9": {"release_tag": "uasdk-1.8.9-win-src", "asset_pattern": "uasdkcppbundle-src-windows-v1.8.9-650.zip"},
+              "2.0.3": {"release_tag": "uasdk-2.0.3-win-src", "asset_pattern": "uasdkcppbundle-src-windows-v2.0.3-681.zip"},
+          }
+          combos, sdk = [], []
+          for tk in manifest["toolkits"]["uasdk"]:
+              if pr_only and tk.get("tier", "pr") != "pr":
+                  continue
+              vcases = tk.get("cases") or all_cases
+              combos += [{"case": c, "sdk_version": tk["version"]} for c in vcases]
+              sdk.append({"sdk_version": tk["version"], **bundles[tk["version"]]})
+          print("cases=" + json.dumps(all_cases))
           print("uasdk_combos=" + json.dumps(combos))
+          print("sdk_matrix=" + json.dumps(sdk))
           EOF
       - run: |
           echo "Windows cases -> ${{ steps.gen.outputs.cases }}"
           echo "Windows uasdk combos -> ${{ steps.gen.outputs.uasdk_combos }}"
+          echo "Windows sdk matrix -> ${{ steps.gen.outputs.sdk_matrix }}"
 
   framework-invariants-windows:
     runs-on: windows-2025
@@ -148,24 +159,16 @@ jobs:
   # patches) are handled inline in the build step; the known 1.6.5 fix chain is
   # kept and made version-tolerant (each patch no-ops when its pattern is absent).
   windows-uasdk-sdk:
+    needs: windows-matrix
     if: ${{ vars.HAS_WINDOWS_UASDK == 'true' }}
     runs-on: windows-2025
     name: uasdk sdk build · ${{ matrix.sdk_version }}
     strategy:
       fail-fast: false
+      # version set + per-version bundle coordinates come from windows-matrix (the
+      # manifest decides which SDKs this event needs; push/PR builds only PR-tier ones).
       matrix:
-        # 1.6.5 ships as the legacy NSIS self-extractor release; 1.8.9/2.0.3 are the
-        # modern plain-.zip cpp bundles. (No 2.0.2: no Windows source bundle exists.)
-        include:
-          - sdk_version: '1.6.5'
-            release_tag: uasdk-1.6.5-win32-x86-vs2015-src
-            asset_pattern: '*.exe'
-          - sdk_version: '1.8.9'
-            release_tag: uasdk-1.8.9-win-src
-            asset_pattern: uasdkcppbundle-src-windows-v1.8.9-650.zip
-          - sdk_version: '2.0.3'
-            release_tag: uasdk-2.0.3-win-src
-            asset_pattern: uasdkcppbundle-src-windows-v2.0.3-681.zip
+        include: ${{ fromJSON(needs.windows-matrix.outputs.sdk_matrix) }}
     env:
       QUASAR_CMAKE_GENERATOR: Ninja
       CMAKE_TOOLCHAIN_FILE: C:\vcpkg\scripts\buildsystems\vcpkg.cmake
