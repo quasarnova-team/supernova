@@ -56,17 +56,24 @@ jobs:
           # UASDK_DL_TOKEN). 1.6.5 ships as the legacy NSIS self-extractor; the modern
           # bundles are plain .zip. (No 2.0.2 bundle exists.)
           bundles = {
-              "1.6.5": {"release_tag": "uasdk-1.6.5-win32-x86-vs2015-src", "asset_pattern": "*.exe"},
-              "1.8.9": {"release_tag": "uasdk-1.8.9-win-src", "asset_pattern": "uasdkcppbundle-src-windows-v1.8.9-650.zip"},
-              "2.0.3": {"release_tag": "uasdk-2.0.3-win-src", "asset_pattern": "uasdkcppbundle-src-windows-v2.0.3-681.zip"},
+              "1.6.5": {"release_tag": "uasdk-1.6.5-win32-x86-vs2015-src", "asset_pattern": "*.exe", "build": "478"},
+              "1.8.9": {"release_tag": "uasdk-1.8.9-win-src", "asset_pattern": "uasdkcppbundle-src-windows-v1.8.9-650.zip", "build": "650"},
+              "2.0.3": {"release_tag": "uasdk-2.0.3-win-src", "asset_pattern": "uasdkcppbundle-src-windows-v2.0.3-681.zip", "build": "681"},
           }
           combos, sdk = [], []
           for tk in manifest["toolkits"]["uasdk"]:
               if pr_only and tk.get("tier", "pr") != "pr":
                   continue
+              v = tk["version"]
+              # The built SDK moves between jobs via actions/cache, NEVER as a workflow
+              # artifact: on a public repo artifacts are downloadable by any GitHub user,
+              # and a built commercial SDK must not be redistributable. The key includes
+              # the vendor build number, so the SDK compiles once per bundle and is
+              # reused across runs.
+              ck = f"uasdk-win-{v}-{bundles[v]['build']}-vc1451"
               vcases = tk.get("cases") or all_cases
-              combos += [{"case": c, "sdk_version": tk["version"]} for c in vcases]
-              sdk.append({"sdk_version": tk["version"], **bundles[tk["version"]]})
+              combos += [{"case": c, "sdk_version": v, "cache_key": ck} for c in vcases]
+              sdk.append({"sdk_version": v, "cache_key": ck, **bundles[v]})
           print("cases=" + json.dumps(all_cases))
           print("uasdk_combos=" + json.dumps(combos))
           print("sdk_matrix=" + json.dumps(sdk))
@@ -179,9 +186,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+      - name: Restore built SDK from cache
+        id: sdkcache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\uasdk
+          key: ${{ matrix.cache_key }}
       - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
+        if: steps.sdkcache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup-quasar-windows
       - name: Build UASDK ${{ matrix.sdk_version }} (x64, from source)
+        if: steps.sdkcache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ secrets.UASDK_DL_TOKEN }}
         run: |
@@ -277,15 +292,19 @@ jobs:
           cmake --build C:\uasdk-b; chk "uasdk build"
           cmake --install C:\uasdk-b; chk "uasdk install"
         shell: pwsh
-      - name: Upload the built UASDK ${{ matrix.sdk_version }} (consumed per case by the cells below)
-        uses: actions/upload-artifact@v4
+      # Cache, NOT an artifact: public-repo artifacts are world-downloadable and the
+      # built commercial SDK must never be redistributable. Caches have no public
+      # download endpoint (and fork-PR workflows cannot build this: no secret).
+      - name: Cache the built UASDK ${{ matrix.sdk_version }} (consumed per case by the cells below)
+        if: steps.sdkcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
         with:
-          name: uasdk-windows-${{ matrix.sdk_version }}
           path: C:\uasdk
+          key: ${{ matrix.cache_key }}
 
-  # Fan the case set out over the pre-built SDKs: download the right version artifact,
+  # Fan the case set out over the pre-built SDKs: restore the right version from cache,
   # build the uasdk server (uasdk_win_configuration.cmake detects the 1.x-vs-2.x install
-  # layout from the artifact), run the same backend-agnostic uasak_dump oracle
+  # layout), run the same backend-agnostic uasak_dump oracle
   # (run_test_case.py applies the case + normalizes the open62541>=1.5 quoted NodeIds).
   # Each SDK version is built ONCE (above), not per case. The (case x sdk_version) cells
   # come from windows-matrix.uasdk_combos: full case set on 2.0.3 only, representative
@@ -313,13 +332,14 @@ jobs:
           python-version: '3.x'
       - name: Provision the token-free Windows build environment (MSVC + Boost + XSD + vcpkg)
         uses: ./.github/actions/setup-quasar-windows
-      - name: Download the pre-built UASDK ${{ matrix.sdk_version }}
-        uses: actions/download-artifact@v4
+      - name: Restore the pre-built UASDK ${{ matrix.sdk_version }}
+        uses: actions/cache/restore@v4
         with:
-          name: uasdk-windows-${{ matrix.sdk_version }}
           path: C:\uasdk
-      - name: Verify the SDK artifact is present
-        run: if (-not (Test-Path C:\uasdk\lib)) { throw "UASDK artifact missing C:\uasdk\lib" }
+          key: ${{ matrix.cache_key }}
+          fail-on-cache-miss: true
+      - name: Verify the SDK is present
+        run: if (-not (Test-Path C:\uasdk\lib)) { throw "UASDK cache missing C:\uasdk\lib" }
         shell: pwsh
       - name: Patch CodeSynthesis libxsd for the msxml/Xerces DOMDocument clash
         run: |
