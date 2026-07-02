@@ -137,6 +137,62 @@ jobs:
       - run: ./quasar.py set_build_config open62541_config.cmake
       - run: ./quasar.py prepare_build Release
 
+  # ── toolchain-frontier probes (nightly/dispatch): newest CMake vs the stack ──
+  # Generalizes the OPCUA-3442/3443/3444 class (WS2025 findings): the toolchain
+  # frontier moves and latent assumptions rot. Deliberately UNPINNED latest CMake —
+  # these probes exist to see the frontier coming. Nightly-only so external
+  # breakage never blocks PRs. cmake_316_floor covers the other end of the range.
+  cmake_frontier:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Latest CMake + build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++ git libboost-all-dev libssl-dev libxml2-utils libxml2-dev libxerces-c-dev xsdcxx > /dev/null
+          pip3 -q install jinja2 lxml colorama pygit2 cmake
+          CMAKE_BIN=$(python3 -c "import cmake,os;print(cmake.CMAKE_BIN_DIR)")
+          echo "$CMAKE_BIN" >> "$GITHUB_PATH"
+          "$CMAKE_BIN/cmake" --version | head -1
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: |
+          COMPAT=$(python3 -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])")
+          ./quasar.py enable_module open62541-compat "$COMPAT"
+      - run: ./quasar.py set_build_config open62541_config.cmake
+      - run: ./quasar.py prepare_build Release
+
+  # Standalone open62541-compat with REAL dependency discovery (find_package
+  # Boost config-mode, googletest fetch+run) — the consumption mode quasar's own
+  # cells never exercise (they inject BOOST_LIBS / embed compat). Advisory until
+  # the compat pin carries the OPCUA-3442/3443 fixes (>= v1.5.8), then enforcing.
+  compat_standalone_frontier:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Latest CMake + Boost dev packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++ git libboost-chrono-dev libboost-date-time-dev libboost-thread-dev libboost-program-options-dev libboost-system-dev > /dev/null
+          pip3 -q install cmake
+          CMAKE_BIN=$(python3 -c "import cmake,os;print(cmake.CMAKE_BIN_DIR)")
+          echo "$CMAKE_BIN" >> "$GITHUB_PATH"
+          "$CMAKE_BIN/cmake" --version | head -1
+      - name: Clone open62541-compat at the manifest pin
+        run: |
+          COMPAT=$(python3 -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])")
+          echo "compat pin: $COMPAT"
+          git clone --branch "$COMPAT" --depth 1 https://github.com/quasar-team/open62541-compat.git compat
+      - name: Standalone configure + build + test (real discovery)
+        run: |
+          cmake -S compat -B build -DSTANDALONE_BUILD=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+          ./build/test/open62541-compat-Test
+
   # ── framework invariants (hermetic: no backend, no compiler) ─────────────
   framework_invariants:
     runs-on: ubuntu-latest

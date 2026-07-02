@@ -203,5 +203,8 @@
         "uasdk"
       ]
     }
-  ]
+  ],
+  "probes": {
+    "_doc": "Toolchain-frontier probes (nightly/dispatch, unpinned latest CMake). Generalize the OPCUA-3442/3443/3444 class: cmake_frontier (ci.yml) = quasar configure on newest CMake (floor job covers 3.16); compat_standalone_frontier (ci.yml) + compat-standalone-frontier-windows (windows.yml) = standalone open62541-compat with real find_package discovery. Advisory until the compat pin >= v1.5.8, then flip enforcing (drop continue-on-error)."
+  }
 }

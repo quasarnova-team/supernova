@@ -310,3 +310,68 @@ jobs:
           name: windump-uasdk-${{ matrix.case }}
           path: build/bin/dump.xml
           if-no-files-found: ignore
+
+  # ── toolchain-frontier probe (nightly/dispatch): standalone compat on WS2025 ──
+  # Windows twin of ci.yml's compat_standalone_frontier. Generalizes the
+  # OPCUA-3442/3443/3444 class: standalone open62541-compat with REAL dependency
+  # discovery (find_package(Boost) config-mode via Boost_ROOT, googletest fetch)
+  # on the newest CMake (unpinned — the probe watches the frontier move). Boost is
+  # built once via b2 clang-win (versioned layout: findable ONLY by BoostConfig,
+  # invisible to module-mode FindBoost — the exact geometry of OPCUA-3442) and
+  # cached. Advisory until the compat pin carries the fixes (>= v1.5.8).
+  compat-standalone-frontier-windows:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Latest CMake (unpinned frontier)
+        shell: pwsh
+        run: |
+          python -m pip install --quiet --upgrade cmake
+          $cmakeExe = python -c "import cmake,os;print(os.path.join(cmake.CMAKE_BIN_DIR,'cmake.exe'))"
+          & $cmakeExe --version
+          echo "CMAKE_EXE=$cmakeExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Restore Boost cache
+        id: boost-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\BoostB2
+          key: boost-1.88.0-b2-clangwin-versioned
+      - name: Build Boost 1.88 via b2 clang-win (versioned headers)
+        if: steps.boost-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://archives.boost.io/release/1.88.0/source/boost_1_88_0.zip -OutFile C:\boost.zip
+          7z x C:\boost.zip -oC:\bsrc | Out-Null
+          cd C:\bsrc\boost_1_88_0
+          .\bootstrap.bat clang-win
+          if ($LASTEXITCODE -ne 0) { Write-Error "bootstrap clang-win failed"; exit 1 }
+          .\b2 install toolset=clang-win --prefix=C:\BoostB2 --with-chrono --with-date_time --with-thread --with-program_options link=static address-model=64 variant=debug,release -j4 | Select-Object -Last 5
+      - name: Save Boost cache
+        if: always() && steps.boost-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\BoostB2
+          key: boost-1.88.0-b2-clangwin-versioned
+      - name: Clone open62541-compat at the manifest pin
+        shell: pwsh
+        run: |
+          $compat = python -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])"
+          Write-Host "compat pin: $compat"
+          git clone --branch $compat --depth 1 https://github.com/quasar-team/open62541-compat.git compat
+      - name: Standalone configure + build + test (real discovery, Ninja)
+        shell: pwsh
+        run: |
+          $env:Boost_ROOT = "C:\BoostB2"
+          & $env:CMAKE_EXE -S compat -B build -G Ninja -DSTANDALONE_BUILD=ON -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { Write-Error "standalone configure failed"; exit 1 }
+          & $env:CMAKE_EXE --build build
+          if ($LASTEXITCODE -ne 0) { Write-Error "standalone build failed"; exit 1 }
+          & build\test\open62541-compat-Test.exe
+          if ($LASTEXITCODE -ne 0) { Write-Error "compat unit tests failed"; exit 1 }
+          exit 0
