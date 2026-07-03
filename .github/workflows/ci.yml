@@ -85,6 +85,7 @@ jobs:
         run: dnf install -y clang
       - env:
           COMPAT_BRANCH: ${{ matrix.compat_branch }}
+          QUASAR_BUILD_CONFIG: ${{ matrix.build_config }}
         run: |
           .CI/run_test_case.py --case "${{ matrix.case }}" --backend "${{ matrix.backend }}" ${COMPAT_BRANCH:+--open62541_compat_branch "$COMPAT_BRANCH"}
       - if: always()

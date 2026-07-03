@@ -50,11 +50,14 @@ def _image(os_name, backend, toolkit_version):
 
 
 def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier,
-          arch='x86_64', compat_branch=None, advisory=False):
+          arch='x86_64', compat_branch=None, advisory=False, build_config=None):
     name = case['name']
     parts = [name, backend, os_name] + ([compiler] if compiler != 'gcc' else [])
     if toolkit_version:
         parts.append(toolkit_version)
+    if build_config:
+        import os.path
+        parts.append(os.path.splitext(os.path.basename(build_config))[0])
     if compat_branch:
         # Off-pin compat ref: mark the label so it never collides with the pinned cell
         # (dedup is by label) and stays invisible to cross_backend_parity's label regex.
@@ -81,6 +84,7 @@ def _cell(manifest, case, backend, os_name, compiler, toolkit_version, tier,
         'cxx': _CXX[compiler],
         'compat_branch': compat_branch or manifest['backends'].get(backend, {}).get('compat_branch', ''),
         'advisory': advisory,
+        'build_config': build_config or '',
     }
 
 
@@ -111,7 +115,7 @@ def expand(manifest):
         return (not representative) or case['name'] in representative
 
     def emit(case, backend, os_name, compiler, base_tier, force_tier=None, only_versions=None, arch='x86_64',
-             compat_branch=None, advisory=False):
+             compat_branch=None, advisory=False, build_config=None):
         # force_tier overrides each toolkit version's own tier (used for nightly_os, so a
         # PR-tier version like 1.8.9 still lands at nightly on the extended OS).
         # only_versions (set) restricts which uasdk toolkit versions are emitted here.
@@ -121,12 +125,12 @@ def expand(manifest):
             # out runs only a smoke case); absent = the full case set.
             return [_cell(manifest, case, backend, os_name, compiler,
                           tk['version'], force_tier or tk.get('tier', base_tier), arch=arch,
-                          compat_branch=compat_branch, advisory=advisory)
+                          compat_branch=compat_branch, advisory=advisory, build_config=build_config)
                     for tk in versions
                     if (not only_versions or tk['version'] in only_versions)
                     and (not tk.get('cases') or case['name'] in tk['cases'])]
         return [_cell(manifest, case, backend, os_name, compiler, None, force_tier or base_tier, arch=arch,
-                      compat_branch=compat_branch, advisory=advisory)]
+                      compat_branch=compat_branch, advisory=advisory, build_config=build_config)]
 
     cells = []
     for case in manifest['cases']:
@@ -151,7 +155,8 @@ def expand(manifest):
                           extra.get('compiler', 'gcc'), extra.get('tier', case_tier),
                           only_versions=pin,
                           compat_branch=extra.get('compat_branch'),
-                          advisory=extra.get('advisory', False))
+                          advisory=extra.get('advisory', False),
+                          build_config=extra.get('build_config'))
     # Extended OSes (e.g. alma10): mirror the FULL case set at nightly so PR stays lean on default_os.
     # A secondary EL major is a first-class platform target, so EVERY case runs there -- deliberately
     # NOT narrowed by representative_cases (unlike arm64 / the alt toolkit versions). An entry may be a

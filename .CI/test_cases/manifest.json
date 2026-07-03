@@ -71,6 +71,15 @@
           "tier": "nightly",
           "compat_branch": "master",
           "advisory": true
+        },
+        {
+          "backend": "uasdk",
+          "os": "alma10",
+          "tier": "nightly",
+          "version": "2.0.3",
+          "build_config": ".CI/travis/build_configs/uasdk-native.cmake",
+          "advisory": true,
+          "_doc": "exercises the UASDKCPP package-config discovery path in FindOpcUaToolkit (vs uasdk-eval's preset libs); advisory until proven against the packaged SDK install"
         }
       ]
     },
