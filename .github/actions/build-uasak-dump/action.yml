@@ -28,7 +28,7 @@ runs:
           ($out[0] -split '\s+')[0].Substring(0, 12)
         }
         $uasak  = Resolve-RemoteSha 'https://github.com/parasxos/UaSwissArmyKnife.git' 'refs/heads/windows-msvc'
-        $compat = Resolve-RemoteSha 'https://github.com/parasxos/open62541-compat.git' 'refs/heads/msvc-cflags-157'
+        $compat = Resolve-RemoteSha 'https://github.com/quasar-team/open62541-compat.git' 'refs/tags/v1.5.8'
         $logit  = Resolve-RemoteSha 'https://github.com/quasar-team/LogIt.git' 'refs/tags/v0.1.3'
         $vc = $env:VCToolsVersion; if (-not $vc) { $vc = 'unknown' }
         $vc = (($vc -split '\.')[0..1] -join '.')
@@ -90,12 +90,21 @@ runs:
         New-Item -ItemType Directory -Force build\deploy | Out-Null
         # 1) LogIt v0.1.3 -> static lib + headers into build/deploy/LogIt
         git clone --depth=1 -b v0.1.3 https://github.com/quasar-team/LogIt.git build\work\LogIt
-        cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja $policy -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"; chk "LogIt configure"
+        cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja $policy -DCMAKE_BUILD_TYPE=Release -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"; chk "LogIt configure"
         cmake --build build\work\LogIt\b; chk "LogIt build"
         cmake --install build\work\LogIt\b; chk "LogIt install"
         # 2) open62541-compat (fork) -> static lib + headers into build/deploy/open62541-compat
-        git clone -b msvc-cflags-157 https://github.com/parasxos/open62541-compat.git build\work\compat
-        cmake -S build\work\compat -B build\work\compat\b -G Ninja $policy -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON; chk "compat configure"
+        # compat >= v1.5.8 resolves Boost via find_package(Boost CONFIG), which the
+        # nuget 1.67 layout (pre-BoostConfig) cannot serve. Use compat's own
+        # boost_custom_win.cmake (new in v1.5.8): it globs tagged libs from the
+        # flat $env:BOOST_PATH_LIBS dir — exactly the C:\deps\boost\libs assembled
+        # above — bypassing discovery. It requires an explicit CMAKE_BUILD_TYPE
+        # (Release picks the -mt- libs and the /MD runtime; empty drifts to debug
+        # autolink names). Absolute config path: compat's include() resolves
+        # relative names against the cmake cwd (the uasak dir), not its source dir.
+        git clone -b v1.5.8 https://github.com/quasar-team/open62541-compat.git build\work\compat
+        $env:BOOST_PATH_LIBS = 'C:\deps\boost\libs'
+        cmake -S build\work\compat -B build\work\compat\b -G Ninja $policy -DCMAKE_BUILD_TYPE=Release -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" -DOPEN62541-COMPAT_BUILD_CONFIG_FILE="$($PWD.Path -replace '\\','/')/build/work/compat/boost_custom_win.cmake" -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON; chk "compat configure"
         cmake --build build\work\compat\b; chk "compat build"
         cmake --install build\work\compat\b; chk "compat install"
         # 3) uasak_dump itself. xerces-c is linked by bare name -> put vcpkg lib on LIB;
@@ -103,7 +112,7 @@ runs:
         #    that uasak's include_directories doesn't cover -> add them to cl's INCLUDE.
         $env:LIB = "$env:LIB;C:\vcpkg\installed\x64-windows\lib"
         $env:INCLUDE = "$env:INCLUDE;$env:CODE_SYNTHESYS_XSD_PATH_HEADERS;C:\vcpkg\installed\x64-windows\include"
-        cmake -S . -B build -G Ninja $policy @boost -DXSD_CXX_COMMAND=xsd -DCMAKE_EXE_LINKER_FLAGS="/LIBPATH:C:\vcpkg\installed\x64-windows\lib"; chk "uasak configure"
+        cmake -S . -B build -G Ninja $policy -DCMAKE_BUILD_TYPE=Release @boost -DXSD_CXX_COMMAND=xsd -DCMAKE_EXE_LINKER_FLAGS="/LIBPATH:C:\vcpkg\installed\x64-windows\lib /LIBPATH:C:\deps\boost\libs"; chk "uasak configure"
         cmake --build build; chk "uasak build"
         Get-ChildItem -Recurse -Filter 'uasak_dump*' build | Select-Object FullName
 

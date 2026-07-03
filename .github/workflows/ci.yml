@@ -168,12 +168,11 @@ jobs:
 
   # Standalone open62541-compat with REAL dependency discovery (find_package
   # Boost config-mode, googletest fetch+run) — the consumption mode quasar's own
-  # cells never exercise (they inject BOOST_LIBS / embed compat). Advisory until
-  # the compat pin carries the OPCUA-3442/3443 fixes (>= v1.5.8), then enforcing.
+  # cells never exercise (they inject BOOST_LIBS / embed compat). Enforcing since
+  # the compat pin carries the OPCUA-3442/3443 fixes (v1.5.8).
   compat_standalone_frontier:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Latest CMake + Boost dev packages
