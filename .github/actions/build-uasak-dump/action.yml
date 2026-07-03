@@ -4,12 +4,49 @@ description: >
   on windows-2025 into ./uasak/build/uasak_dump.exe. uasak_dump is an OPC UA
   *client* and is backend-agnostic, so the same tool drives the oracle for both
   the o6 and uasdk servers. Requires the setup-quasar-windows action to have run
-  first (MSVC + Boost + XSD + vcpkg on the environment).
+  first (MSVC + Boost + XSD + vcpkg on the environment). The built exe is cached
+  keyed on every source ref plus the toolchain, so case cells normally restore
+  it in seconds instead of rebuilding.
 
 runs:
   using: composite
   steps:
+    - name: Derive the uasak_dump cache key (source refs + toolchain)
+      id: key
+      shell: pwsh
+      run: |
+        $ErrorActionPreference='Stop'
+        # uasak_dump.exe is a pure function of the three pinned source refs (they
+        # must match the clone commands in the build step below), the static Boost
+        # it links (nuget 1.67 vc141 from setup-quasar-windows), the vcpkg dep set
+        # whose DLLs it loads at run time, and the MSVC toolchain. Branch refs are
+        # resolved to remote SHAs so a moved branch can never serve a stale binary.
+        # Bump the trailing -v1 to invalidate manually.
+        function Resolve-RemoteSha($repo, $ref) {
+          $out = @(git ls-remote $repo $ref)
+          if ($LASTEXITCODE -ne 0 -or -not $out) { throw "git ls-remote $repo $ref failed" }
+          ($out[0] -split '\s+')[0].Substring(0, 12)
+        }
+        $uasak  = Resolve-RemoteSha 'https://github.com/parasxos/UaSwissArmyKnife.git' 'refs/heads/windows-msvc'
+        $compat = Resolve-RemoteSha 'https://github.com/parasxos/open62541-compat.git' 'refs/heads/msvc-cflags-157'
+        $logit  = Resolve-RemoteSha 'https://github.com/quasar-team/LogIt.git' 'refs/tags/v0.1.3'
+        $vc = $env:VCToolsVersion; if (-not $vc) { $vc = 'unknown' }
+        $vc = (($vc -split '\.')[0..1] -join '.')
+        # boost1.67vc141 tracks the setup-quasar-windows Boost pin; vcpkgv2 tracks
+        # its vcpkg cache key version (...-xerces-v2). Change those, change these.
+        $key = "uasak-dump-win-$uasak-$compat-$logit-vc$vc-boost1.67vc141-vcpkgv2-v1"
+        Write-Host "uasak_dump cache key: $key"
+        "key=$key" >> $env:GITHUB_OUTPUT
+
+    - name: Restore uasak_dump from cache
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: uasak/build/uasak_dump.exe
+        key: ${{ steps.key.outputs.key }}
+
     - name: Build uasak_dump (+ LogIt + compat)
+      if: steps.cache.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
         $ErrorActionPreference='Stop'
@@ -69,3 +106,16 @@ runs:
         cmake -S . -B build -G Ninja $policy @boost -DXSD_CXX_COMMAND=xsd -DCMAKE_EXE_LINKER_FLAGS="/LIBPATH:C:\vcpkg\installed\x64-windows\lib"; chk "uasak configure"
         cmake --build build; chk "uasak build"
         Get-ChildItem -Recurse -Filter 'uasak_dump*' build | Select-Object FullName
+
+    - name: Save uasak_dump to cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: uasak/build/uasak_dump.exe
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Verify uasak_dump is present (restored or freshly built)
+      shell: pwsh
+      run: |
+        if (-not (Test-Path 'uasak\build\uasak_dump.exe')) { throw 'uasak_dump.exe missing after cache restore/build' }
+        Get-Item 'uasak\build\uasak_dump.exe' | Select-Object FullName, Length, LastWriteTime
