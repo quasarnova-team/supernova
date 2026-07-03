@@ -189,6 +189,43 @@ jobs:
           cmake --build build -j"$(nproc)"
           ./build/test/open62541-compat-Test
 
+  # ── bare-distro probe (nightly/dispatch): stock AlmaLinux 10, dnf only ───
+  # The curated quasar-ci images pin their toolchain at image-build time; a
+  # user on a fresh AlmaLinux 10 box builds against whatever distro/EPEL ship
+  # today. This job configures, builds and boots the default design with
+  # today's packages so distro drift (new system cmake/boost/xsd/xerces/gcc)
+  # surfaces here first. Smoke (clean build + server start), no NodeSet
+  # oracle: address-space content is distro-independent and oracle-checked by
+  # the cube, and the oracle toolchain would re-pin third-party builds into a
+  # job whose point is having no pins.
+  bare_distro_alma10:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    container:
+      image: almalinux:10
+    steps:
+      # Deps first: the stock container has no git, and actions/checkout needs
+      # it for the LogIt submodule.
+      - name: Install build stack from distro/EPEL only
+        run: |
+          dnf install -y epel-release
+          dnf install -y git patch make cmake gcc-c++ boost-devel xsd \
+            xerces-c-devel libxml2-devel openssl-devel astyle \
+            python3-colorama python3-jinja2 python3-lxml python3-pygit2
+          cmake --version | head -1
+          g++ --version | head -1
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: |
+          COMPAT=$(python3 -c "import json;print(json.load(open('.CI/test_cases/manifest.json'))['backends']['o6']['compat_branch'])")
+          ./quasar.py enable_module open62541-compat "$COMPAT"
+      - run: ./quasar.py set_build_config open62541_config.cmake
+      - run: ./quasar.py build Release
+      - name: Boot the server (smoke assertion)
+        run: ./.CI/travis/server_fixture.py
+
   # ── framework invariants (hermetic: no backend, no compiler) ─────────────
   framework_invariants:
     runs-on: ubuntu-latest
