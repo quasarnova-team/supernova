@@ -20,6 +20,7 @@
   ],
   "_nightly_arches_doc": "Extra nightly-only CPU arches on native GitHub arm64 runners (ubuntu-24.04-arm) with arch-tagged images, narrowed by representative_cases. Empty now: arm64 coverage moved to default_arches (full per-case PR sweep on default_os = alma10, both backends), so there is no separate nightly arch axis. Re-add e.g. {\"arch\":\"arm64\",\"os\":\"alma9\",\"versions\":[...]} to test arm64 on a non-primary OS.",
   "nightly_arches": [],
+  "_compat_master_doc": "backends.o6.compat_branch pins open62541-compat for stability. One nightly ADVISORY cell (default_design.extra_cells: compat_branch=master, advisory=true) builds against compat MASTER so an upstream merge that breaks embedded-in-quasar builds surfaces the next night instead of at the next compat release. Advisory: continue-on-error in ci.yml -- signals maintainers, never blocks contributors.",
   "backends": {
     "o6": {
       "compat_branch": "v1.5.7"
@@ -63,6 +64,13 @@
           "backend": "uasdk",
           "os": "alma9",
           "version": "1.8.9"
+        },
+        {
+          "backend": "o6",
+          "os": "alma10",
+          "tier": "nightly",
+          "compat_branch": "master",
+          "advisory": true
         }
       ]
     },

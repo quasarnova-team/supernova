@@ -64,6 +64,8 @@ jobs:
     needs: matrix
     runs-on: ${{ matrix.runner }}
     name: ${{ matrix.label }}
+    # Advisory cells (e.g. the compat-master probe) show a red X but never fail the workflow.
+    continue-on-error: ${{ matrix.advisory }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
@@ -81,7 +83,10 @@ jobs:
           submodules: recursive
       - if: matrix.compiler == 'clang'
         run: dnf install -y clang
-      - run: .CI/run_test_case.py --case ${{ matrix.case }} --backend ${{ matrix.backend }}
+      - env:
+          COMPAT_BRANCH: ${{ matrix.compat_branch }}
+        run: |
+          .CI/run_test_case.py --case "${{ matrix.case }}" --backend "${{ matrix.backend }}" ${COMPAT_BRANCH:+--open62541_compat_branch "$COMPAT_BRANCH"}
       - if: always()
         uses: actions/upload-artifact@v4
         with:
