@@ -24,10 +24,14 @@
 # needed variables for compilation, linking, and include directories.
 #
 # Search order:
-# 1. Explicit path set in the build config: set(OPCUA_TOOLKIT_PATH "/path/to/toolkit")
-# 2. Environment variable: export OPCUA_TOOLKIT_PATH=/path/to/toolkit
-# 3. Standard system paths (/opt/OpcUaToolkit, /usr/local/OpcUaToolkit, etc.)
-# 4. Paths from CMAKE_PREFIX_PATH
+# 1. UASDKCPP package config (UA SDK >= 2.0): lib/cmake/UASDKCPP under
+#    OPCUA_TOOLKIT_PATH (variable or environment), or under the standard
+#    prefixes when no path is given. Skipped entirely when the build config
+#    pre-sets OPCUA_TOOLKIT_LIBS_RELEASE/_DEBUG.
+# 2. Explicit path set in the build config: set(OPCUA_TOOLKIT_PATH "/path/to/toolkit")
+# 3. Environment variable: export OPCUA_TOOLKIT_PATH=/path/to/toolkit
+# 4. Standard system paths (/opt/OpcUaToolkit, /usr/local/OpcUaToolkit, etc.)
+# 5. Paths from CMAKE_PREFIX_PATH
 #
 # Example usage in build config file:
 #   # Option 1: Let the module find the toolkit automatically
@@ -36,6 +40,109 @@
 #   # Option 2: Explicitly set the path (preferred method)
 #   set(OPCUA_TOOLKIT_PATH "/path/to/OpcUaToolkit")
 #   find_package(OpcUaToolkit REQUIRED)
+
+# --- UASDKCPP package-config discovery (UA SDK >= 2.0) -----------------------
+# UA SDK 2.x installs export find_package(UASDKCPP) with imported targets
+# (UASDKCPP::Server aggregates coremodule -> uabasecpp -> uastack/embeddedstack,
+# including the transitive LibXml2/OpenSSL/pthread/rt link edges). Config mode
+# is attempted first; 1.x installs (no lib/cmake/UASDKCPP) and build configs
+# that pre-set the link lists fall through to the legacy search below, unchanged.
+if(NOT DEFINED OPCUA_TOOLKIT_LIBS_RELEASE AND NOT DEFINED OPCUA_TOOLKIT_LIBS_DEBUG)
+  if(DEFINED OPCUA_TOOLKIT_PATH)
+    set(_QUASAR_UASDK_CONFIG_ROOT "${OPCUA_TOOLKIT_PATH}")
+  elseif(DEFINED ENV{OPCUA_TOOLKIT_PATH})
+    set(_QUASAR_UASDK_CONFIG_ROOT "$ENV{OPCUA_TOOLKIT_PATH}")
+  endif()
+  if(DEFINED _QUASAR_UASDK_CONFIG_ROOT)
+    # NO_DEFAULT_PATH: the requested toolkit must not be shadowed by a stray
+    # system-wide SDK picked up from CMake's default search.
+    find_package(UASDKCPP CONFIG QUIET COMPONENTS Server
+      PATHS "${_QUASAR_UASDK_CONFIG_ROOT}" NO_DEFAULT_PATH)
+    if(NOT UASDKCPP_FOUND AND EXISTS "${_QUASAR_UASDK_CONFIG_ROOT}/lib/cmake/UASDKCPP")
+      message(WARNING
+        "A UASDKCPP package config exists at ${_QUASAR_UASDK_CONFIG_ROOT}/lib/cmake/UASDKCPP "
+        "but find_package(UASDKCPP CONFIG COMPONENTS Server) did not succeed (the config "
+        "failed to load or the Server component's targets are missing). Falling back to the "
+        "legacy library search, which assumes a UA SDK 1.x layout and is likely to fail at "
+        "link time against a 2.x install.")
+    endif()
+    unset(_QUASAR_UASDK_CONFIG_ROOT)
+  else()
+    find_package(UASDKCPP CONFIG QUIET COMPONENTS Server
+      PATHS /opt/uasdk /opt/OpcUaToolkit /opt/Unified-Automation /opt/opcua
+            /usr/local/OpcUaToolkit /usr/local/Unified-Automation /usr/local/opcua /usr/opcua)
+  endif()
+endif()
+
+if(UASDKCPP_FOUND)
+  # UASDKCPP_DIR is <prefix>/lib/cmake/UASDKCPP; derive the install prefix.
+  get_filename_component(OPCUATOOLKIT_PATH "${UASDKCPP_DIR}/../../.." ABSOLUTE)
+  set(OPCUATOOLKIT_PATH "${OPCUATOOLKIT_PATH}" CACHE PATH "Path to OPC UA Toolkit installation")
+  set(OPCUA_TOOLKIT_PATH "${OPCUATOOLKIT_PATH}")
+  set(OPCUATOOLKIT_VERSION "${UASDKCPP_VERSION}")
+
+  # quasar's OBJECT modules compile against the toolkit headers via the global
+  # include path, so hoist the imported targets' interface include dirs.
+  function(_quasar_uasdk_collect_include_dirs root out_var)
+    set(_stack "${root}")
+    set(_visited "")
+    set(_dirs "")
+    while(_stack)
+      list(POP_FRONT _stack _t)
+      if(_t IN_LIST _visited OR NOT TARGET "${_t}")
+        continue()
+      endif()
+      list(APPEND _visited "${_t}")
+      get_target_property(_inc "${_t}" INTERFACE_INCLUDE_DIRECTORIES)
+      if(_inc)
+        list(APPEND _dirs ${_inc})
+      endif()
+      get_target_property(_deps "${_t}" INTERFACE_LINK_LIBRARIES)
+      if(_deps)
+        foreach(_d IN LISTS _deps)
+          if(_d MATCHES "^UASDKCPP::")
+            list(APPEND _stack "${_d}")
+          endif()
+        endforeach()
+      endif()
+    endwhile()
+    list(REMOVE_DUPLICATES _dirs)
+    set(${out_var} "${_dirs}" PARENT_SCOPE)
+  endfunction()
+
+  _quasar_uasdk_collect_include_dirs(UASDKCPP::Server OPCUATOOLKIT_INCLUDE_DIRS)
+  list(APPEND OPCUATOOLKIT_INCLUDE_DIRS "${OPCUATOOLKIT_PATH}/include")
+  list(REMOVE_DUPLICATES OPCUATOOLKIT_INCLUDE_DIRS)
+  include_directories(${OPCUATOOLKIT_INCLUDE_DIRS})
+
+  set(OPCUA_TOOLKIT_LIBS_RELEASE UASDKCPP::Server)
+  set(OPCUA_TOOLKIT_LIBS_DEBUG UASDKCPP::Server)
+  set(OPCUATOOLKIT_LIBRARIES_RELEASE ${OPCUA_TOOLKIT_LIBS_RELEASE})
+  set(OPCUATOOLKIT_LIBRARIES_DEBUG ${OPCUA_TOOLKIT_LIBS_DEBUG})
+  if(CMAKE_BUILD_TYPE MATCHES Debug)
+    set(OPCUATOOLKIT_LIBRARIES ${OPCUATOOLKIT_LIBRARIES_DEBUG})
+  else()
+    set(OPCUATOOLKIT_LIBRARIES ${OPCUATOOLKIT_LIBRARIES_RELEASE})
+  endif()
+  set(OPCUATOOLKIT_LIBRARY_DIRS "${OPCUATOOLKIT_PATH}/lib")
+  set(OPCUATOOLKIT_FOUND TRUE)
+
+  message(STATUS "OPC UA Toolkit configuration (UASDKCPP package config at ${UASDKCPP_DIR}):")
+  message(STATUS "  Version: ${OPCUATOOLKIT_VERSION}")
+  message(STATUS "  Include dirs: ${OPCUATOOLKIT_INCLUDE_DIRS}")
+  message(STATUS "  Library path: ${OPCUATOOLKIT_LIBRARY_DIRS}")
+
+  include(FindPackageHandleStandardArgs)
+  find_package_handle_standard_args(OpcUaToolkit
+    REQUIRED_VARS OPCUATOOLKIT_PATH
+    VERSION_VAR OPCUATOOLKIT_VERSION
+  )
+  if(NOT TARGET quasar_opcua_backend_is_ready)
+    add_custom_target(quasar_opcua_backend_is_ready)
+  endif()
+  return()
+endif()
+# --- legacy hand-search (UA SDK 1.x, or build configs pre-setting the libs) ---
 
 if(DEFINED OPCUA_TOOLKIT_PATH)
   set(OPCUATOOLKIT_PATH ${OPCUA_TOOLKIT_PATH} CACHE PATH "Path to OPC UA Toolkit installation")
