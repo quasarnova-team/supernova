@@ -16,6 +16,23 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
+                <td valign="top">supernova 1.2.1<font size="-1"><br>(13-Jul-2026)</font><br></td>
+                <!-- Changes introduced -->
+                <td valign="top"><br>OPC UA FX hardening from two independent adversarial reviews. Critical fix: in <code>EstablishConnections</code>, address-space nodes were created before the connection was activated, so a failed connection (a colliding subscriber peer key, or a parseable-but-unbindable address) leaked permanent nodes, bypassed the endpoint ceiling, and bricked auto-naming server-wide — the activation now runs first, with rollback. Also: atomic engine status flags (data-race fix), an io-thread same-thread guard, engine teardown on the configuration-error path, a pinned shutdown order, and — in hypernova 1.1.1 — the connection-manager rolls both sides back on any post-publisher failure. Regression-locked by an extended hostile-client suite and CM rollback tests.</td>
+                <!-- Possible backward incompatibilities -->
+                <td valign="top"><br>(none)</td>
+                <!-- JIRA Release notes -->
+                <td valign="top">Tracked on GitHub:
+                    <ul>
+                        <li>[<a href='https://github.com/quasarnova-team/supernova/issues/12'>supernova#12</a>] - OPC UA FX epic</li>
+                    </ul>
+                </td>
+                <!-- Testing outcome -->
+                <td valign="top">Extended hostile suite (17 probes + ordering-regression + ceiling) both backends; full FX suite 10/10; 52-check JSON codec; 89 hypernova tests incl. 3 new CM rollback regressions.</td>
+            </tr>
+
+            <tr>
+                <!-- Version -->
                 <td valign="top">supernova 1.2.0<font size="-1"><br>(13-Jul-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>OPC UA FX (Field eXchange, OPC UA Parts 80/81 subset): a new backend-neutral <code>Fx</code> framework module. An <code>Fx</code> element in the server configuration declares an AutomationComponent with FunctionalEntities and their preconfigured input/output datasets over existing cache variables; <code>EstablishConnections</code>/<code>CloseConnections</code> methods on the component activate them at runtime, wiring the Pub/Sub engine dynamically (the engine gained empty start and tagged runtime add/remove) and maintaining browsable ConnectionEndpoint objects with live status. Connection management from the outside via the hypernova <code>fx</code> connection manager. Identical on both backends; FX end-to-end test green in all four backend combinations.</td>
