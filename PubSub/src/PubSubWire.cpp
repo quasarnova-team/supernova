@@ -103,9 +103,30 @@ void putString(std::vector<uint8_t>& out, const std::string& s)
     out.insert(out.end(), s.begin(), s.end());
 }
 
+void encodeScalarBody(std::vector<uint8_t>& out, const WireValue& value);
+
 void encodeVariant(std::vector<uint8_t>& out, const WireValue& value)
 {
+    if (value.isArray())
+    {
+        if (value.elements().size() > 0xFFFFFF)
+            throw std::runtime_error("PubSub wire encoder: array too large");
+        putU8(out, static_cast<uint8_t>(value.type()) | VariantArrayValuesFlag);
+        putU32(out, static_cast<uint32_t>(value.elements().size()));
+        for (size_t i = 0; i < value.elements().size(); i++)
+        {
+            if (value.elements()[i].type() != value.type() || value.elements()[i].isArray())
+                throw std::runtime_error("PubSub wire encoder: mixed-type array");
+            encodeScalarBody(out, value.elements()[i]);
+        }
+        return;
+    }
     putU8(out, static_cast<uint8_t>(value.type()));
+    encodeScalarBody(out, value);
+}
+
+void encodeScalarBody(std::vector<uint8_t>& out, const WireValue& value)
+{
     switch (value.type())
     {
         case TypeNull:
@@ -248,16 +269,48 @@ private:
     size_t m_position;
 };
 
+bool decodeScalarBody(Reader& reader, uint8_t type, WireValue& out, std::string& diagnostic);
+
 bool decodeVariant(Reader& reader, WireValue& out, std::string& diagnostic)
 {
     uint8_t mask;
     if (!reader.u8(mask)) { diagnostic = "truncated variant mask"; return false; }
-    if (mask & (VariantArrayValuesFlag | VariantArrayDimensionsFlag))
+    if (mask & VariantArrayDimensionsFlag)
     {
-        diagnostic = "array-valued fields are not supported";
+        diagnostic = "multi-dimensional arrays are not supported";
         return false;
     }
+    if (mask & VariantArrayValuesFlag)
+    {
+        uint8_t elementType = mask & 0x3F;
+        uint32_t rawLength;
+        if (!reader.u32(rawLength)) { diagnostic = "truncated array length"; return false; }
+        int32_t length = static_cast<int32_t>(rawLength);
+        std::vector<WireValue> elements;
+        if (length > 0)
+        {
+            if (static_cast<uint32_t>(length) > 1000000)
+            {
+                diagnostic = "array length is implausible";
+                return false;
+            }
+            elements.reserve(static_cast<size_t>(length));
+            for (int32_t i = 0; i < length; i++)
+            {
+                WireValue element;
+                if (!decodeScalarBody(reader, elementType, element, diagnostic)) return false;
+                elements.push_back(element);
+            }
+        }
+        out = WireValue::makeArray(static_cast<BuiltinType>(elementType), elements);
+        return true;
+    }
     uint8_t type = mask & 0x3F;
+    return decodeScalarBody(reader, type, out, diagnostic);
+}
+
+bool decodeScalarBody(Reader& reader, uint8_t type, WireValue& out, std::string& diagnostic)
+{
     switch (type)
     {
         case TypeNull:
@@ -505,9 +558,26 @@ WireValue WireValue::makeDateTime(int64_t value)
     return v;
 }
 
+WireValue WireValue::makeArray(BuiltinType elementType, const std::vector<WireValue>& elements)
+{
+    WireValue v;
+    v.m_type = elementType;
+    v.m_isArray = true;
+    v.m_elements = elements;
+    return v;
+}
+
 bool WireValue::equals(const WireValue& other) const
 {
     if (m_type != other.m_type) return false;
+    if (m_isArray != other.m_isArray) return false;
+    if (m_isArray)
+    {
+        if (m_elements.size() != other.m_elements.size()) return false;
+        for (size_t i = 0; i < m_elements.size(); i++)
+            if (!m_elements[i].equals(other.m_elements[i])) return false;
+        return true;
+    }
     switch (m_type)
     {
         case TypeNull:     return true;

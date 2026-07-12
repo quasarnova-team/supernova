@@ -60,6 +60,8 @@ public:
     static WireValue makeDouble(double value);
     static WireValue makeString(const std::string& value);
     static WireValue makeDateTime(int64_t value);
+    /* One-dimensional array of scalars of the same builtin type. */
+    static WireValue makeArray(BuiltinType elementType, const std::vector<WireValue>& elements);
 
     BuiltinType type() const { return m_type; }
     bool boolValue() const { return m_uint != 0; }
@@ -67,6 +69,8 @@ public:
     uint64_t unsignedValue() const { return m_uint; }
     double floatValue() const { return m_float; }
     const std::string& stringValue() const { return m_string; }
+    bool isArray() const { return m_isArray; }
+    const std::vector<WireValue>& elements() const { return m_elements; }
 
     bool equals(const WireValue& other) const;
 
@@ -76,6 +80,8 @@ private:
     uint64_t    m_uint;
     double      m_float;
     std::string m_string;
+    bool        m_isArray = false;
+    std::vector<WireValue> m_elements;
 };
 
 enum PublisherIdType

@@ -10,6 +10,7 @@
 				</DataSetWriter>
 				<DataSetWriter id="2">
 					<Field source="PS1.counter"/>
+					<Field source="PS1.samples"/>
 				</DataSetWriter>
 			</WriterGroup>
 			<DataSetReader publisherId="77" publisherIdType="UInt16" writerGroupId="100" dataSetWriterId="2">

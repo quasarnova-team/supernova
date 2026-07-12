@@ -345,9 +345,75 @@ static void testRejections()
     CHECK(!decodeNetworkMessage(&badVersion[0], badVersion.size(), out2, diagnostic));
 }
 
+static void testArrays()
+{
+    NetworkMessage m;
+    m.publisherIdType = PublisherIdUInt16;
+    m.publisherId = 50;
+    m.writerGroupId = 6;
+    m.groupSequenceNumber = 2;
+    DataSetMessage dsm;
+    dsm.dataSetWriterId = 3;
+    dsm.sequenceNumberEnabled = true;
+    dsm.sequenceNumber = 8;
+
+    std::vector<WireValue> ints;
+    ints.push_back(WireValue::makeSigned(TypeInt32, 1));
+    ints.push_back(WireValue::makeSigned(TypeInt32, -2));
+    ints.push_back(WireValue::makeSigned(TypeInt32, 3));
+    dsm.fields.push_back(WireValue::makeArray(TypeInt32, ints));
+
+    std::vector<WireValue> strings;
+    strings.push_back(WireValue::makeString("alpha"));
+    strings.push_back(WireValue::makeString(""));
+    dsm.fields.push_back(WireValue::makeArray(TypeString, strings));
+
+    dsm.fields.push_back(WireValue::makeArray(TypeDouble, std::vector<WireValue>()));
+    dsm.fields.push_back(WireValue::makeDouble(4.5));
+    m.messages.push_back(dsm);
+
+    std::vector<uint8_t> wire = encodeNetworkMessage(m);
+
+    /* spec-exact first array header: Int32|array flag, then length 3 */
+    size_t offset = 0;
+    /* find the field: header is deterministic — flags(1) ext1(1) pid(2) gh(1+2+2) count(1) wid(2) dsmflags(1) seq(2) fieldcount(2) */
+    offset = 1 + 1 + 2 + 1 + 2 + 2 + 1 + 2 + 1 + 2 + 2;
+    CHECK(wire[offset] == (0x06 | 0x80));
+    CHECK(wire[offset + 1] == 0x03 && wire[offset + 2] == 0x00);
+
+    NetworkMessage out;
+    std::string diagnostic;
+    bool ok = decodeNetworkMessage(&wire[0], wire.size(), out, diagnostic);
+    CHECK(ok);
+    if (!ok) { std::printf("  diagnostic: %s\n", diagnostic.c_str()); return; }
+    const DataSetMessage& d = out.messages[0];
+    CHECK(d.fields.size() == 4);
+    CHECK(d.fields[0].isArray() && d.fields[0].elements().size() == 3);
+    CHECK(d.fields[0].elements()[1].signedValue() == -2);
+    CHECK(d.fields[1].isArray() && d.fields[1].elements()[0].stringValue() == "alpha");
+    CHECK(d.fields[2].isArray() && d.fields[2].elements().empty());
+    CHECK(!d.fields[3].isArray() && d.fields[3].floatValue() == 4.5);
+    CHECK(d.fields[0].equals(m.messages[0].fields[0]));
+    CHECK(!d.fields[0].equals(d.fields[1]));
+
+    /* truncation fuzz across the arrays */
+    for (size_t cut = 0; cut < wire.size(); cut++)
+    {
+        NetworkMessage trunc;
+        std::string diag;
+        if (decodeNetworkMessage(cut == 0 ? 0 : &wire[0], cut, trunc, diag))
+        {
+            g_failures++;
+            std::printf("FAIL array truncation at %zu decoded\n", cut);
+        }
+        g_checks++;
+    }
+}
+
 int main()
 {
     testGoldenBytes();
+    testArrays();
     testScalarRoundTrips();
     testPublisherIdTypes();
     testMultipleDataSetMessages();

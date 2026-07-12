@@ -23,6 +23,7 @@
 
 #include <stdexcept>
 
+#include <ArrayTools.h>
 #include <ASNodeManager.h>
 #include <ChangeNotifyingVariable.h>
 #include <LogIt.h>
@@ -33,8 +34,104 @@ namespace PubSub
 namespace
 {
 
+template <typename CppType>
+bool arrayToWireSigned(const UaVariant& variant, BuiltinType type, WireValue& out)
+{
+    std::vector<CppType> values;
+    if (!AddressSpace::ArrayTools::convertUaVariantToVector(variant, values).isGood()) return false;
+    std::vector<WireValue> elements;
+    elements.reserve(values.size());
+    for (size_t i = 0; i < values.size(); i++)
+        elements.push_back(WireValue::makeSigned(type, static_cast<int64_t>(values[i])));
+    out = WireValue::makeArray(type, elements);
+    return true;
+}
+
+template <typename CppType>
+bool arrayToWireUnsigned(const UaVariant& variant, BuiltinType type, WireValue& out)
+{
+    std::vector<CppType> values;
+    if (!AddressSpace::ArrayTools::convertUaVariantToVector(variant, values).isGood()) return false;
+    std::vector<WireValue> elements;
+    elements.reserve(values.size());
+    for (size_t i = 0; i < values.size(); i++)
+        elements.push_back(WireValue::makeUnsigned(type, static_cast<uint64_t>(values[i])));
+    out = WireValue::makeArray(type, elements);
+    return true;
+}
+
+bool uaArrayToWire(const UaVariant& variant, WireValue& out)
+{
+    namespace tools = AddressSpace::ArrayTools;
+    switch (variant.type())
+    {
+        case OpcUaType_Boolean:
+        {
+            std::vector<OpcUa_Boolean> values;
+            if (!tools::convertUaVariantToBooleanVector(variant, values).isGood()) return false;
+            std::vector<WireValue> elements;
+            for (size_t i = 0; i < values.size(); i++)
+                elements.push_back(WireValue::makeBoolean(values[i] != OpcUa_False));
+            out = WireValue::makeArray(TypeBoolean, elements);
+            return true;
+        }
+        case OpcUaType_Byte:
+        {
+            std::vector<OpcUa_Byte> values;
+            if (!tools::convertUaVariantToByteVector(variant, values).isGood()) return false;
+            std::vector<WireValue> elements;
+            for (size_t i = 0; i < values.size(); i++)
+                elements.push_back(WireValue::makeUnsigned(TypeByte, values[i]));
+            out = WireValue::makeArray(TypeByte, elements);
+            return true;
+        }
+        case OpcUaType_SByte:  return arrayToWireSigned<OpcUa_SByte>(variant, TypeSByte, out);
+        case OpcUaType_Int16:  return arrayToWireSigned<OpcUa_Int16>(variant, TypeInt16, out);
+        case OpcUaType_UInt16: return arrayToWireUnsigned<OpcUa_UInt16>(variant, TypeUInt16, out);
+        case OpcUaType_Int32:  return arrayToWireSigned<OpcUa_Int32>(variant, TypeInt32, out);
+        case OpcUaType_UInt32: return arrayToWireUnsigned<OpcUa_UInt32>(variant, TypeUInt32, out);
+        case OpcUaType_Int64:  return arrayToWireSigned<OpcUa_Int64>(variant, TypeInt64, out);
+        case OpcUaType_UInt64: return arrayToWireUnsigned<OpcUa_UInt64>(variant, TypeUInt64, out);
+        case OpcUaType_Float:
+        {
+            std::vector<OpcUa_Float> values;
+            if (!tools::convertUaVariantToVector(variant, values).isGood()) return false;
+            std::vector<WireValue> elements;
+            for (size_t i = 0; i < values.size(); i++)
+                elements.push_back(WireValue::makeFloat(values[i]));
+            out = WireValue::makeArray(TypeFloat, elements);
+            return true;
+        }
+        case OpcUaType_Double:
+        {
+            std::vector<OpcUa_Double> values;
+            if (!tools::convertUaVariantToVector(variant, values).isGood()) return false;
+            std::vector<WireValue> elements;
+            for (size_t i = 0; i < values.size(); i++)
+                elements.push_back(WireValue::makeDouble(values[i]));
+            out = WireValue::makeArray(TypeDouble, elements);
+            return true;
+        }
+        case OpcUaType_String:
+        {
+            std::vector<UaString> values;
+            if (!tools::convertUaVariantToVector(variant, values).isGood()) return false;
+            std::vector<WireValue> elements;
+            for (size_t i = 0; i < values.size(); i++)
+                elements.push_back(WireValue::makeString(
+                    values[i].toUtf8() ? std::string(values[i].toUtf8()) : std::string()));
+            out = WireValue::makeArray(TypeString, elements);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
 bool uaVariantToWire(const UaVariant& variant, WireValue& out)
 {
+    if (variant.isArray())
+        return uaArrayToWire(variant, out);
     switch (variant.type())
     {
         case OpcUaType_Null:
@@ -121,8 +218,124 @@ bool uaVariantToWire(const UaVariant& variant, WireValue& out)
     }
 }
 
+template <typename CppType>
+std::vector<CppType> wireArraySigned(const WireValue& value)
+{
+    std::vector<CppType> values;
+    values.reserve(value.elements().size());
+    for (size_t i = 0; i < value.elements().size(); i++)
+        values.push_back(static_cast<CppType>(value.elements()[i].signedValue()));
+    return values;
+}
+
+template <typename CppType>
+std::vector<CppType> wireArrayUnsigned(const WireValue& value)
+{
+    std::vector<CppType> values;
+    values.reserve(value.elements().size());
+    for (size_t i = 0; i < value.elements().size(); i++)
+        values.push_back(static_cast<CppType>(value.elements()[i].unsignedValue()));
+    return values;
+}
+
+bool wireArrayToUa(const WireValue& value, UaVariant& out)
+{
+    namespace tools = AddressSpace::ArrayTools;
+    switch (value.type())
+    {
+        case TypeBoolean:
+        {
+            std::vector<OpcUa_Boolean> values;
+            values.reserve(value.elements().size());
+            for (size_t i = 0; i < value.elements().size(); i++)
+                values.push_back(value.elements()[i].boolValue() ? OpcUa_True : OpcUa_False);
+            tools::convertBooleanVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeByte:
+        {
+            std::vector<OpcUa_Byte> values = wireArrayUnsigned<OpcUa_Byte>(value);
+            tools::convertByteVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeSByte:
+        {
+            std::vector<OpcUa_SByte> values = wireArraySigned<OpcUa_SByte>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeInt16:
+        {
+            std::vector<OpcUa_Int16> values = wireArraySigned<OpcUa_Int16>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeUInt16:
+        {
+            std::vector<OpcUa_UInt16> values = wireArrayUnsigned<OpcUa_UInt16>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeInt32:
+        {
+            std::vector<OpcUa_Int32> values = wireArraySigned<OpcUa_Int32>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeUInt32:
+        {
+            std::vector<OpcUa_UInt32> values = wireArrayUnsigned<OpcUa_UInt32>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeInt64:
+        {
+            std::vector<OpcUa_Int64> values = wireArraySigned<OpcUa_Int64>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeUInt64:
+        {
+            std::vector<OpcUa_UInt64> values = wireArrayUnsigned<OpcUa_UInt64>(value);
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeFloat:
+        {
+            std::vector<OpcUa_Float> values;
+            values.reserve(value.elements().size());
+            for (size_t i = 0; i < value.elements().size(); i++)
+                values.push_back(static_cast<OpcUa_Float>(value.elements()[i].floatValue()));
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeDouble:
+        {
+            std::vector<OpcUa_Double> values;
+            values.reserve(value.elements().size());
+            for (size_t i = 0; i < value.elements().size(); i++)
+                values.push_back(value.elements()[i].floatValue());
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        case TypeString:
+        {
+            std::vector<UaString> values;
+            values.reserve(value.elements().size());
+            for (size_t i = 0; i < value.elements().size(); i++)
+                values.push_back(UaString(value.elements()[i].stringValue().c_str()));
+            tools::convertVectorToUaVariant(values, out);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
 bool wireToUaVariant(const WireValue& value, UaVariant& out)
 {
+    if (value.isArray())
+        return wireArrayToUa(value, out);
     switch (value.type())
     {
         case TypeBoolean:

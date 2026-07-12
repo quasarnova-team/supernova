@@ -6,6 +6,9 @@
     <d:cachevariable name="temperature" addressSpaceWrite="forbidden" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Double" initialStatus="OpcUa_Good" initialValue="0"/>
     <d:cachevariable name="label" addressSpaceWrite="forbidden" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="UaString" initialStatus="OpcUa_Good" initialValue="supernova"/>
     <d:cachevariable name="mirror" addressSpaceWrite="regular" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Int32" initialStatus="OpcUa_Good" initialValue="-1"/>
+    <d:cachevariable name="samples" addressSpaceWrite="regular" initializeWith="valueAndStatus" nullPolicy="nullAllowed" dataType="OpcUa_Double" initialStatus="OpcUa_Good">
+      <d:array/>
+    </d:cachevariable>
   </d:class>
   <d:root>
     <d:hasobjects instantiateUsing="configuration" class="PubSubTester"/>
