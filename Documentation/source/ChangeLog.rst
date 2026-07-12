@@ -16,7 +16,7 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
-                <td valign="top">supernova (TBD)<font size="-1"><br>(TBD)</font><br></td>
+                <td valign="top">supernova 1.2.0<font size="-1"><br>(13-Jul-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>OPC UA FX (Field eXchange, OPC UA Parts 80/81 subset): a new backend-neutral <code>Fx</code> framework module. An <code>Fx</code> element in the server configuration declares an AutomationComponent with FunctionalEntities and their preconfigured input/output datasets over existing cache variables; <code>EstablishConnections</code>/<code>CloseConnections</code> methods on the component activate them at runtime, wiring the Pub/Sub engine dynamically (the engine gained empty start and tagged runtime add/remove) and maintaining browsable ConnectionEndpoint objects with live status. Connection management from the outside via the hypernova <code>fx</code> connection manager. Identical on both backends; FX end-to-end test green in all four backend combinations.</td>
                 <!-- Possible backward incompatibilities -->
