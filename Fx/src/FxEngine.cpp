@@ -476,22 +476,42 @@ UaStatus Engine::establishConnections(
         endpoint.role = role;
         endpoint.ownerTag = "fx:" + m_configuration.automationComponent + "/" + entityName + "/" + name;
 
+        /* Activate the data plane FIRST. addDynamic is the operation that can
+         * fail (a duplicate reader key, a parseable-but-unbindable address),
+         * and address-space nodes are permanent and not individually
+         * removable. Creating them before addDynamic would, on failure, leak
+         * the nodes, leave the endpoint unrecorded (so the ceiling never
+         * counts it), and poison the name (and, via the auto-name counter,
+         * poison EstablishConnections server-wide). Ordering the throwing step
+         * before any node creation makes a failed establish a clean no-op. */
+        PubSub::Engine::instance().addDynamic(endpoint.ownerTag, publisherIdType, publisherId, connection);
+
         if (!endpoint.statusVariable)
         {
-            const UaNodeId endpointsFolder = m_endpointsFolderOfEntity[entityName];
-            const UaNodeId endpointNode = addPlainObject(endpointsFolder, name);
-            UaVariant initialStatus;
-            initialStatus.setInt32(EndpointInitial);
-            endpoint.statusVariable = addVariable(endpointNode, "Status", initialStatus, OpcUaType_Int32);
-            UaVariant addressValue;
-            addressValue.setString(UaString(address.c_str()));
-            addVariable(endpointNode, "Address", addressValue, OpcUaType_String);
-            UaVariant datasetValue;
-            datasetValue.setString(UaString((role + ":" + entityName + "." + datasetName).c_str()));
-            addVariable(endpointNode, "Dataset", datasetValue, OpcUaType_String);
+            try
+            {
+                const UaNodeId endpointsFolder = m_endpointsFolderOfEntity[entityName];
+                const UaNodeId endpointNode = addPlainObject(endpointsFolder, name);
+                UaVariant initialStatus;
+                initialStatus.setInt32(EndpointInitial);
+                endpoint.statusVariable = addVariable(endpointNode, "Status", initialStatus, OpcUaType_Int32);
+                UaVariant addressValue;
+                addressValue.setString(UaString(address.c_str()));
+                addVariable(endpointNode, "Address", addressValue, OpcUaType_String);
+                UaVariant datasetValue;
+                datasetValue.setString(UaString((role + ":" + entityName + "." + datasetName).c_str()));
+                addVariable(endpointNode, "Dataset", datasetValue, OpcUaType_String);
+            }
+            catch (...)
+            {
+                /* Building the first-time endpoint view failed after the data
+                 * plane came up — undo the data plane so nothing is left half
+                 * alive, then report the failure. */
+                PubSub::Engine::instance().removeDynamic(endpoint.ownerTag);
+                throw;
+            }
         }
 
-        PubSub::Engine::instance().addDynamic(endpoint.ownerTag, publisherIdType, publisherId, connection);
         endpoint.active = true;
         setEndpointStatus(endpoint, EndpointOperational);
         m_endpoints[name] = endpoint;

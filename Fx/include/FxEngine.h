@@ -24,6 +24,7 @@
 
 #include <FxConfiguration.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -103,7 +104,7 @@ private:
     std::map<std::string, UaNodeId> m_endpointsFolderOfEntity;
     std::map<std::string, Endpoint> m_endpoints;
     std::mutex m_mutex;
-    bool m_started;
+    std::atomic<bool> m_started;
 };
 
 class AutomationComponentNode: public OpcUa::BaseObjectType

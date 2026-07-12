@@ -478,6 +478,14 @@ void Engine::startIoThread()
 
 void Engine::runOnIoThread(const std::function<void()>& work)
 {
+    /* If we are already on the io thread (e.g. a future caller reacts to an
+     * incoming datagram), posting-and-waiting would deadlock — the handler
+     * we are waiting on can only run after this one returns. Run inline. */
+    if (m_ioContext->get_executor().running_in_this_thread())
+    {
+        work();
+        return;
+    }
     std::promise<void> done;
     std::future<void> future = done.get_future();
     boost::asio::post(*m_ioContext, [&work, &done]()

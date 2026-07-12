@@ -26,6 +26,7 @@
 #include <PubSubUdp.h>
 #include <PubSubWire.h>
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -135,7 +136,7 @@ private:
     std::vector<ReceiverRuntime> m_receivers;
     std::map<ReaderKey, std::shared_ptr<ReaderRuntime> > m_readers;
     AddressSpace::ASNodeManager* m_nodeManager;
-    bool m_running;
+    std::atomic<bool> m_running;
 };
 
 }

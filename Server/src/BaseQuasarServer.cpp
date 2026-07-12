@@ -183,6 +183,11 @@ int BaseQuasarServer::serverRun(
             " caught in BaseQuasarServer::serverRun:  [" << Quasar::TermColors::ForeRed() << e.what() << Quasar::TermColors::StyleReset() << "]";
         serverReturnCode = 1;
     }
+    /* Load-bearing order: Fx::shutdown() must fully return before
+     * PubSub::shutdown() runs. Fx::shutdown may block on the PubSub io thread
+     * (removeDynamic) while holding no lock a client can also want; stopping
+     * the io thread first would strand that work and hang. Do not reorder or
+     * add a second PubSub::shutdown caller elsewhere. */
     Fx::Engine::instance().shutdown();
     PubSub::Engine::instance().shutdown();
     AddressSpace::SourceVariables_destroySourceVariablesThreadPool ();
@@ -558,6 +563,12 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     catch (const std::exception& e)
     {
         LOG(Log::ERR) << "Fx initialization failed: " << e.what();
+        /* PubSub may already have started its io thread above; if this
+         * after-startup handler returns Bad the server aborts on a path that
+         * does not reach serverRun's shutdown, leaving a joinable io thread to
+         * std::terminate at static destruction. Tear both engines down here. */
+        Fx::Engine::instance().shutdown();
+        PubSub::Engine::instance().shutdown();
         return OpcUa_Bad;
     }
     return OpcUa_Good;
