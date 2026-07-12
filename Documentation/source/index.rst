@@ -62,6 +62,7 @@ Contact
 
 		Alternative backends <./AlternativeBackends>
 		Calculated variables <./CalculatedVariables>
+		OPC UA Pub/Sub <./PubSub>
 		Feature parity <./FeatureParity>
 		ChangeLog <./ChangeLog>
 		Design manual <./DesignManual>

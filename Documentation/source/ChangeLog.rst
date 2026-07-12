@@ -16,6 +16,22 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
+                <td valign="top">supernova<font size="-1"><br>(TBD)</font><br></td>
+                <!-- Changes introduced -->
+                <td valign="top"><br>OPC UA Pub/Sub support (OPC UA Part 14): a new backend-neutral <code>PubSub</code> framework module provides publisher and subscriber roles over UADP/UDP multicast. Pub/Sub is declared in the server configuration file (a <code>PubSub</code> element validated by the generated <code>Configuration.xsd</code>) and references instance addresses of cache variables; <code>Design.xml</code> needs no change. Behaviour is identical on both backends (the engine is a common implementation on the portability layer; neither backend's native Pub/Sub is required). Wire-format interoperability is tested in both directions against open62541's native Pub/Sub as an independent reference peer, plus a self-subscribing <code>pubsub</code> smoke CI case.</td>
+                <!-- Possible backward incompatibilities -->
+                <td valign="top"><br>(none)</td>
+                <!-- JIRA Release notes -->
+                <td valign="top">Tracked on GitHub:
+                    <ul>
+                        <li>[<a href='https://github.com/quasarnova-team/supernova/issues/1'>supernova#1</a>] - Add OPC UA Pub/Sub support (publisher + subscriber)</li>
+                    </ul>
+                </td>
+                <td valign="top">All 12 oracle test cases green on both backends with the module integrated; publisher and subscriber verified end-to-end against open62541 reference peers on both backends.<br></td>
+            </tr>
+
+            <tr>
+                <!-- Version -->
                 <td valign="top">2.1.0<font size="-1"><br>(09-Jun-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>The open62541 backend reaches feature parity with the Unified Automation one: source variables and asynchronous methods are now generated for open62541 too, both executing synchronously inline (no thread pool; the <code>addressSpace*UseMutex</code> lock modes are not applied). Together with open62541-compat v1.4.7 (pin bumped here), method <code>InputArguments</code>/<code>OutputArguments</code> properties carry the canonical quasar node ids, which makes the o6 methods NodeSet comparison pass. Additionally, build-portability hardening for clang/clang++ and glibc-free (musl/Alpine) toolchains: clang is registered as a recognized compiler and honoured via <code>CC</code>/<code>CXX</code>, <code>-lrt</code> is only linked on Linux for both backends, and the clang <code>-Wundef</code> and <code>-Wstrict-prototypes</code> diagnostics from the framework's own sources are resolved. Several Python and C++ paths that assumed only Windows or Linux now also cover macOS/Darwin and other POSIX platforms. Adds an optional, manually-triggered clang-tidy CI workflow plus o6_source_variables, o6_async_methods and clang CI jobs. UASDK generated code is unchanged.</td>
