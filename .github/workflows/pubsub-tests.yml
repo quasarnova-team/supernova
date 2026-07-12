@@ -1,0 +1,31 @@
+name: PubSub wire codec tests
+
+# The PubSub wire codec is pure C++ (no OPC UA backend, no framework deps),
+# so its unit suite runs on a stock runner in seconds. It compiles under the
+# framework's C++11 floor with warnings-as-errors, matching the strictest
+# in-tree toolchain expectations.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  wire-codec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run (g++, C++11, -Werror)
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror -IPubSub/include \
+              PubSub/src/PubSubWire.cpp PubSub/test/test_wire.cpp -o test_wire
+          ./test_wire
+      - name: Build and run (clang++, C++11, -Werror)
+        run: |
+          clang++ -std=c++11 -Wall -Wextra -Werror -IPubSub/include \
+              PubSub/src/PubSubWire.cpp PubSub/test/test_wire.cpp -o test_wire_clang
+          ./test_wire_clang
