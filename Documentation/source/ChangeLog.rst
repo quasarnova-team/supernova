@@ -16,6 +16,22 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
+                <td valign="top">supernova 1.1.0<font size="-1"><br>(12-Jul-2026)</font><br></td>
+                <!-- Changes introduced -->
+                <td valign="top"><br>Pub/Sub: one-dimensional arrays of all supported scalar types flow through both roles — published from array cache variables and received into them (portable via ArrayTools, identical on both backends). Wire-format proven bit-exact against the hypernova Python implementation (a DOUBLE[] round-trip through the server: hypernova → DataSetReader → address space → DataSetWriter → hypernova).</td>
+                <!-- Possible backward incompatibilities -->
+                <td valign="top"><br>(none)</td>
+                <!-- JIRA Release notes -->
+                <td valign="top">Tracked on GitHub:
+                    <ul>
+                        <li>[<a href='https://github.com/quasarnova-team/supernova/issues/1'>supernova#1</a>] - Pub/Sub epic (arrays follow-up)</li>
+                    </ul>
+                </td>
+                <td valign="top">237-check codec suite; full 26-cell matrix green both backends; live array loop vs hypernova.<br></td>
+            </tr>
+
+            <tr>
+                <!-- Version -->
                 <td valign="top">supernova 1.0.0<font size="-1"><br>(12-Jul-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>OPC UA Pub/Sub support (OPC UA Part 14): a new backend-neutral <code>PubSub</code> framework module provides publisher and subscriber roles over UADP/UDP multicast. Pub/Sub is declared in the server configuration file (a <code>PubSub</code> element validated by the generated <code>Configuration.xsd</code>) and references instance addresses of cache variables; <code>Design.xml</code> needs no change. Behaviour is identical on both backends (the engine is a common implementation on the portability layer; neither backend's native Pub/Sub is required). Wire-format interoperability is tested in both directions against open62541's native Pub/Sub as an independent reference peer, plus a self-subscribing <code>pubsub</code> smoke CI case.</td>
