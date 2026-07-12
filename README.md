@@ -2,15 +2,19 @@
 <p align="center"><b>The <a href="https://quasarnova-team.github.io/">quasarnova</a> family's C++ engine — model-driven OPC UA servers, extended with OPC UA Pub/Sub.</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-in%20development-orange" alt="Status: in development">
+  <a href="https://github.com/quasarnova-team/supernova/releases/latest"><img src="https://img.shields.io/github/v/release/quasarnova-team/supernova?label=release&color=3ecf7a" alt="Latest release"></a>
+  <a href="https://github.com/quasarnova-team/supernova/actions/workflows/pubsub-tests.yml"><img src="https://github.com/quasarnova-team/supernova/actions/workflows/pubsub-tests.yml/badge.svg" alt="Pub/Sub wire codec tests"></a>
   <a href="https://www.gnu.org/licenses/lgpl-3.0"><img src="https://img.shields.io/badge/License-LGPL_v3-blue.svg" alt="License: LGPL v3"></a>
-  <a href="https://github.com/quasarnova-team/supernova/milestone/1"><img src="https://img.shields.io/badge/first%20release-milestone-informational" alt="First release milestone"></a>
 </p>
 
-> **Status: in development — not released.** There is no tagged release yet and the
-> Pub/Sub layer is under active construction. The family's shipping engine today is
-> [kilonova](https://github.com/quasarnova-team/kilonova) (pure Python,
-> `pip install kilonova`) — and the same Design file will run on both.
+> **Status: released — early.** [supernova v1.1.0](https://github.com/quasarnova-team/supernova/releases/latest)
+> ships OPC UA Pub/Sub: publisher *and* subscriber, UADP over UDP, on both supported
+> stacks, one-dimensional arrays included. It is a young release — the remaining
+> hardening gates are tracked in the
+> [hardening milestone](https://github.com/quasarnova-team/supernova/milestone/1).
+> The family's Python engine is
+> [kilonova](https://github.com/quasarnova-team/kilonova) (`pip install kilonova`) —
+> the same Design file runs on both.
 
 What is this?
 -------------
@@ -31,8 +35,11 @@ supernova is a fork of the quasar framework extended with **OPC UA Pub/Sub**
 request/response; Pub/Sub adds the many-to-many, brokerless data plane the standard
 defines for high-rate telemetry and controller-to-controller traffic.
 
-Progress toward the first tagged release is tracked in the
-[v0.1 milestone](https://github.com/quasarnova-team/supernova/milestone/1).
+Shipped in [v1.0.0 / v1.1.0](https://github.com/quasarnova-team/supernova/releases):
+a backend-neutral Pub/Sub engine (UADP over UDP), Pub/Sub declared in the generated
+server-configuration schema, a wire-codec unit suite running in CI, and
+one-dimensional array support. Remaining hardening gates live in the
+[milestone](https://github.com/quasarnova-team/supernova/milestone/1).
 
 Quick start
 -----------
