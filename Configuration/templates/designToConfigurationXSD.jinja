@@ -124,7 +124,64 @@
     <xs:attribute name="name" type="tns:ObjectName" use="required"/>
     <xs:attribute name="formula" type="xs:string" use="required"/>
   </xs:complexType>
-  
+
+  <xs:simpleType name="PubSubPublisherIdType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Byte"/>
+      <xs:enumeration value="UInt16"/>
+      <xs:enumeration value="UInt32"/>
+      <xs:enumeration value="UInt64"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="PubSubField">
+    <xs:attribute name="source" type="xs:string" use="optional"/>
+    <xs:attribute name="target" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="PubSubDataSetWriter">
+    <xs:sequence>
+      <xs:element name="Field" type="tns:PubSubField" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:unsignedShort" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PubSubWriterGroup">
+    <xs:sequence>
+      <xs:element name="DataSetWriter" type="tns:PubSubDataSetWriter" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:unsignedShort" use="required"/>
+    <xs:attribute name="publishingIntervalMs" type="xs:double" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PubSubDataSetReader">
+    <xs:sequence>
+      <xs:element name="Field" type="tns:PubSubField" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="publisherId" type="xs:unsignedLong" use="required"/>
+    <xs:attribute name="publisherIdType" type="tns:PubSubPublisherIdType" use="optional" default="UInt16"/>
+    <xs:attribute name="writerGroupId" type="xs:unsignedShort" use="required"/>
+    <xs:attribute name="dataSetWriterId" type="xs:unsignedShort" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PubSubConnection">
+    <xs:sequence>
+      <xs:element name="WriterGroup" type="tns:PubSubWriterGroup" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="DataSetReader" type="tns:PubSubDataSetReader" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="address" type="xs:string" use="required"/>
+    <xs:attribute name="ttl" type="xs:unsignedByte" use="optional" default="1"/>
+    <xs:attribute name="loopback" type="xs:boolean" use="optional" default="true"/>
+  </xs:complexType>
+
+  <xs:complexType name="PubSub">
+    <xs:sequence>
+      <xs:element name="Connection" type="tns:PubSubConnection" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="publisherId" type="xs:unsignedLong" use="required"/>
+    <xs:attribute name="publisherIdType" type="tns:PubSubPublisherIdType" use="optional" default="UInt16"/>
+  </xs:complexType>
+
   <xs:complexType name="FreeVariable">
     <xs:attribute name="name" type="tns:ObjectName" use="required"/>
     <xs:attribute name="type" use="required">
@@ -255,6 +312,9 @@
     <!-- StandardMetaData added manually - first in sequence -->
     <xs:choice minOccurs="0" maxOccurs="1">
       <xs:element name="StandardMetaData" type="tns:StandardMetaData"/>
+    </xs:choice>
+    <xs:choice minOccurs="0" maxOccurs="1">
+      <xs:element name="PubSub" type="tns:PubSub"/>
     </xs:choice>
     <xs:choice minOccurs="0" maxOccurs="unbounded">
       <xs:element name="CalculatedVariableGenericFormula" type="tns:CalculatedVariableGenericFormula"/>

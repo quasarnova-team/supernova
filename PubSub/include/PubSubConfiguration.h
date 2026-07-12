@@ -80,8 +80,6 @@ struct Configuration
     std::vector<ConnectionConfig> connections;
 };
 
-Configuration loadConfiguration(const std::string& path);
-
 void parseNetworkAddress(const std::string& address, std::string& host, uint16_t& port);
 
 PublisherIdType parsePublisherIdType(const std::string& text);

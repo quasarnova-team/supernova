@@ -542,7 +542,7 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     initialize();
     try
     {
-        PubSub::Engine::instance().initialize(configFileName, nm);
+        PubSub::Engine::instance().startIfStaged(nm);
     }
     catch (const std::exception& e)
     {

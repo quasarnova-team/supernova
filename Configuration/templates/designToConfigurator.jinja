@@ -35,6 +35,8 @@
 
 #include <CalculatedVariablesEngine.h>
 #include <FreeVariablesEngine.h>
+#include <PubSubEngine.h>
+#include <PubSubXsdBinding.h>
 
 #include <meta.h>
 
@@ -285,6 +287,9 @@ bool configure (std::string fileName, AddressSpace::ASNodeManager *nm, ConfigXml
   std::unique_ptr<Configuration::Configuration> theConfiguration = loadConfigurationFromFile(fileName);
 
   CalculatedVariables::Engine::loadGenericFormulas(theConfiguration->CalculatedVariableGenericFormula());
+
+  if (theConfiguration->PubSub().present())
+    PubSub::Engine::instance().stageConfiguration(PubSub::configurationFromXsd(theConfiguration->PubSub().get()));
 
   UaNodeId asRootNodeId = UaNodeId(OpcUaId_ObjectsFolder, 0);
   Device::DRoot *dRoot = Device::DRoot::getInstance();

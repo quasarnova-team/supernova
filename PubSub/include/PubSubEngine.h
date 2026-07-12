@@ -47,8 +47,8 @@ class Engine
 public:
     static Engine& instance();
 
-    void initialize(const std::string& serverConfigFilePath, AddressSpace::ASNodeManager* nodeManager);
-    void initializeFromFile(const std::string& pubSubConfigPath, AddressSpace::ASNodeManager* nodeManager);
+    void stageConfiguration(const Configuration& configuration);
+    void startIfStaged(AddressSpace::ASNodeManager* nodeManager);
     void shutdown();
     bool isRunning() const { return m_running; }
 
@@ -94,6 +94,7 @@ private:
 
     typedef std::tuple<uint64_t, uint16_t, uint16_t> ReaderKey;
 
+    std::unique_ptr<Configuration> m_staged;
     std::unique_ptr<boost::asio::io_context> m_ioContext;
     std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type> > m_workGuard;
     std::thread m_thread;

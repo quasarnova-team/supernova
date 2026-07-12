@@ -21,8 +21,6 @@
 
 #include <PubSubEngine.h>
 
-#include <cmath>
-#include <fstream>
 #include <stdexcept>
 
 #include <ASNodeManager.h>
@@ -34,14 +32,6 @@ namespace PubSub
 
 namespace
 {
-
-std::string siblingPath(const std::string& referenceFile, const std::string& fileName)
-{
-    size_t lastSlash = referenceFile.find_last_of("/\\");
-    if (lastSlash == std::string::npos)
-        return fileName;
-    return referenceFile.substr(0, lastSlash + 1) + fileName;
-}
 
 bool uaVariantToWire(const UaVariant& variant, WireValue& out)
 {
@@ -185,30 +175,25 @@ Engine& Engine::instance()
     return engine;
 }
 
-void Engine::initialize(const std::string& serverConfigFilePath, AddressSpace::ASNodeManager* nodeManager)
-{
-    std::string path = siblingPath(serverConfigFilePath, "pubsub.xml");
-    const char* overridePath = std::getenv("QUASAR_PUBSUB_CONFIG");
-    if (overridePath && *overridePath)
-        path = overridePath;
-
-    std::ifstream probe(path.c_str());
-    if (!probe.good())
-    {
-        LOG(Log::INF) << "PubSub: no configuration file at " << path << ", Pub/Sub stays inactive";
-        return;
-    }
-    probe.close();
-
-    initializeFromFile(path, nodeManager);
-}
-
-void Engine::initializeFromFile(const std::string& pubSubConfigPath, AddressSpace::ASNodeManager* nodeManager)
+void Engine::stageConfiguration(const Configuration& configuration)
 {
     if (m_running)
         throw std::runtime_error("PubSub: engine is already running");
+    m_staged.reset(new Configuration(configuration));
+}
 
-    Configuration configuration = loadConfiguration(pubSubConfigPath);
+void Engine::startIfStaged(AddressSpace::ASNodeManager* nodeManager)
+{
+    if (!m_staged)
+    {
+        LOG(Log::INF) << "PubSub: no PubSub section in the configuration, Pub/Sub stays inactive";
+        return;
+    }
+    if (m_running)
+        throw std::runtime_error("PubSub: engine is already running");
+
+    Configuration configuration = *m_staged;
+    m_staged.reset();
 
     m_ioContext.reset(new boost::asio::io_context());
     buildRuntimes(configuration, nodeManager);
@@ -231,7 +216,7 @@ void Engine::initializeFromFile(const std::string& pubSubConfigPath, AddressSpac
     size_t writerCount = 0;
     for (size_t i = 0; i < m_writerGroups.size(); i++)
         writerCount += m_writerGroups[i]->writers.size();
-    LOG(Log::INF) << "PubSub: engine started from " << pubSubConfigPath
+    LOG(Log::INF) << "PubSub: engine started"
                   << " (" << m_writerGroups.size() << " writer group(s), "
                   << writerCount << " data set writer(s), "
                   << m_readers.size() << " data set reader(s))";

@@ -1,0 +1,6 @@
+Pub/Sub smoke: a design with plain cache variables plus a config.xml carrying a
+<PubSub> section (publisher with two DataSetWriters AND a self-subscribing
+DataSetReader on the same multicast connection). Passing means the generated
+Configuration.xsd accepts the PubSub section, the generated Configurator stages
+it, and the PubSub engine resolves every address, opens the UDP transport and
+starts both roles — the server then survives a uasak_dump client session.

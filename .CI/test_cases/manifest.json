@@ -211,6 +211,17 @@
         "o6",
         "uasdk"
       ]
+    },
+    {
+      "name": "pubsub",
+      "kind": "smoke",
+      "design": "test_pubsub/Design.xml",
+      "config": "test_pubsub/config.xml",
+      "generate_devices": true,
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
     }
   ],
   "probes": {

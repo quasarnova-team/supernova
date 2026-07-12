@@ -4,6 +4,9 @@
 add_library( PubSub OBJECT
     src/PubSubWire.cpp
     src/PubSubConfiguration.cpp
+    src/PubSubXsdBinding.cpp
     src/PubSubUdp.cpp
     src/PubSubEngine.cpp
 )
+
+add_dependencies( PubSub Configuration.hxx_GENERATED )
