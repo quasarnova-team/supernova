@@ -133,7 +133,7 @@ set(QUASAR_TRANSFORM_SENSITIVE_FILES
 set(OPTIONAL_SERVER_MODULES)
 include( FrameworkInternals/OptionalModules.cmake )
 
-set(NATIVE_SERVER_MODULES AddressSpace Configuration Common Server Device Meta LogIt CalculatedVariables)
+set(NATIVE_SERVER_MODULES AddressSpace Configuration Common Server Device Meta LogIt CalculatedVariables PubSub)
 set(SERVER_MODULES ${NATIVE_SERVER_MODULES} ${OPTIONAL_SERVER_MODULES} ${CUSTOM_SERVER_MODULES})
 set(OPTIONAL_MODULES_INCLUDES)
 set(MODULES_OBJECTS)
