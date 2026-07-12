@@ -16,7 +16,7 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
-                <td valign="top">supernova<font size="-1"><br>(TBD)</font><br></td>
+                <td valign="top">supernova 1.0.0<font size="-1"><br>(12-Jul-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>OPC UA Pub/Sub support (OPC UA Part 14): a new backend-neutral <code>PubSub</code> framework module provides publisher and subscriber roles over UADP/UDP multicast. Pub/Sub is declared in the server configuration file (a <code>PubSub</code> element validated by the generated <code>Configuration.xsd</code>) and references instance addresses of cache variables; <code>Design.xml</code> needs no change. Behaviour is identical on both backends (the engine is a common implementation on the portability layer; neither backend's native Pub/Sub is required). Wire-format interoperability is tested in both directions against open62541's native Pub/Sub as an independent reference peer, plus a self-subscribing <code>pubsub</code> smoke CI case.</td>
                 <!-- Possible backward incompatibilities -->
