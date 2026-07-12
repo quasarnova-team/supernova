@@ -67,10 +67,8 @@ const uint8_t Dsm2PicosecondsEnabled = 32;
 
 const uint8_t FieldEncodingVariant   = 0;
 const uint8_t FieldEncodingRawData   = 1;
-const uint8_t FieldEncodingDataValue = 2;
 
 const uint8_t DsmTypeKeyFrame   = 0;
-const uint8_t DsmTypeDeltaFrame = 1;
 const uint8_t DsmTypeKeepAlive  = 3;
 
 const uint8_t VariantArrayDimensionsFlag = 0x40;
