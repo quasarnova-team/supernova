@@ -1,8 +1,12 @@
 <p align="center">
   <img src="Documentation/source/_static/quasar_logo.png" alt="quasar logo" width="100">
 </p>
-<h1 align="center">quasar</h1>
-<p align="center">Quick OPC UA Server Generation Framework</p>
+<h1 align="center">supernova</h1>
+<p align="center">quasar + OPC UA Pub/Sub — the <a href="https://github.com/quasarnova-team">quasarnova</a> family's C++ engine</p>
+
+<p align="center"><em>supernova is a fork of <a href="https://github.com/quasar-team/quasar">quasar</a> extended with
+OPC UA Pub/Sub (publisher + subscriber, both backends in parity) — see
+<a href="Documentation/source/PubSub.rst">the Pub/Sub documentation</a>. Everything below is quasar, unchanged.</em></p>
 
 <p align="center">
   <a href="https://github.com/quasar-team/quasar/actions/workflows/ci.yml"><img src="https://github.com/quasar-team/quasar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
