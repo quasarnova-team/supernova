@@ -64,6 +64,7 @@
 #include <MetaBuildInfo.h>
 #include <CalculatedVariablesEngine.h>
 #include <PubSubEngine.h>
+#include <FxEngine.h>
 #include <Utils.h>
 
 #include <OpcuaToolkitInfo.hpp>
@@ -182,6 +183,7 @@ int BaseQuasarServer::serverRun(
             " caught in BaseQuasarServer::serverRun:  [" << Quasar::TermColors::ForeRed() << e.what() << Quasar::TermColors::StyleReset() << "]";
         serverReturnCode = 1;
     }
+    Fx::Engine::instance().shutdown();
     PubSub::Engine::instance().shutdown();
     AddressSpace::SourceVariables_destroySourceVariablesThreadPool ();
     shutdown();  // this is typically overridden by the developer
@@ -547,6 +549,15 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     catch (const std::exception& e)
     {
         LOG(Log::ERR) << "PubSub initialization failed: " << e.what();
+        return OpcUa_Bad;
+    }
+    try
+    {
+        Fx::Engine::instance().startIfStaged(nm);
+    }
+    catch (const std::exception& e)
+    {
+        LOG(Log::ERR) << "Fx initialization failed: " << e.what();
         return OpcUa_Bad;
     }
     return OpcUa_Good;

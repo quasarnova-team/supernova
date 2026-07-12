@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<d:design xmlns:d="http://cern.ch/quasar/Design" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" projectShortName="test_fx" xsi:schemaLocation="http://cern.ch/quasar/Design Design.xsd">
+  <d:class name="FxTester">
+    <d:devicelogic/>
+    <d:cachevariable name="counter" addressSpaceWrite="forbidden" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Int32" initialStatus="OpcUa_Good" initialValue="0"/>
+    <d:cachevariable name="temperature" addressSpaceWrite="forbidden" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Double" initialStatus="OpcUa_Good" initialValue="21.5"/>
+    <d:cachevariable name="setpoint" addressSpaceWrite="regular" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Double" initialStatus="OpcUa_Good" initialValue="-1"/>
+  </d:class>
+  <d:root>
+    <d:hasobjects instantiateUsing="configuration" class="FxTester"/>
+  </d:root>
+</d:design>

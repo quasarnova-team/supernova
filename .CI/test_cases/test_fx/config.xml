@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration xmlns="http://cern.ch/quasar/Configuration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://cern.ch/quasar/Configuration ../Configuration/Configuration.xsd ">
+	<Fx automationComponent="ProcessCell1">
+		<FunctionalEntity name="control" publisherId="91" publisherIdType="UInt16">
+			<OutputDataset name="env" writerGroupId="200" dataSetWriterId="1" publishingIntervalMs="100">
+				<Field name="temperature" source="FX1.temperature"/>
+				<Field name="counter" source="FX1.counter"/>
+			</OutputDataset>
+			<InputDataset name="setpoints">
+				<Field name="target" target="FX1.setpoint"/>
+			</InputDataset>
+		</FunctionalEntity>
+	</Fx>
+	<FxTester name="FX1"/>
+</configuration>

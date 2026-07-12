@@ -1,0 +1,9 @@
+FX smoke: a design with plain cache variables plus a config.xml carrying an
+<Fx> section (one AutomationComponent with a FunctionalEntity declaring an
+output dataset and an input dataset over existing cache variables). Passing
+means the generated Configuration.xsd accepts the Fx section, the generated
+Configurator stages it, and the Fx engine builds the FX view of the address
+space (FunctionalEntities / InputData / OutputData / ConnectionEndpoints,
+EstablishConnections + CloseConnections methods) and brings the PubSub engine
+up empty for dynamic connections — the server then survives a uasak_dump
+client session.

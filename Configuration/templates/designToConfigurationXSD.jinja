@@ -182,6 +182,46 @@
     <xs:attribute name="publisherIdType" type="tns:PubSubPublisherIdType" use="optional" default="UInt16"/>
   </xs:complexType>
 
+  <xs:complexType name="FxField">
+    <xs:attribute name="name" type="xs:string" use="required"/>
+    <xs:attribute name="source" type="xs:string" use="optional"/>
+    <xs:attribute name="target" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="FxOutputDataset">
+    <xs:sequence>
+      <xs:element name="Field" type="tns:FxField" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+    <xs:attribute name="writerGroupId" type="xs:unsignedShort" use="required"/>
+    <xs:attribute name="dataSetWriterId" type="xs:unsignedShort" use="required"/>
+    <xs:attribute name="publishingIntervalMs" type="xs:double" use="optional" default="100"/>
+  </xs:complexType>
+
+  <xs:complexType name="FxInputDataset">
+    <xs:sequence>
+      <xs:element name="Field" type="tns:FxField" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="FxFunctionalEntity">
+    <xs:sequence>
+      <xs:element name="OutputDataset" type="tns:FxOutputDataset" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="InputDataset" type="tns:FxInputDataset" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+    <xs:attribute name="publisherId" type="xs:unsignedLong" use="required"/>
+    <xs:attribute name="publisherIdType" type="tns:PubSubPublisherIdType" use="optional" default="UInt16"/>
+  </xs:complexType>
+
+  <xs:complexType name="Fx">
+    <xs:sequence>
+      <xs:element name="FunctionalEntity" type="tns:FxFunctionalEntity" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="automationComponent" type="xs:string" use="required"/>
+  </xs:complexType>
+
   <xs:complexType name="FreeVariable">
     <xs:attribute name="name" type="tns:ObjectName" use="required"/>
     <xs:attribute name="type" use="required">
@@ -315,6 +355,9 @@
     </xs:choice>
     <xs:choice minOccurs="0" maxOccurs="1">
       <xs:element name="PubSub" type="tns:PubSub"/>
+    </xs:choice>
+    <xs:choice minOccurs="0" maxOccurs="1">
+      <xs:element name="Fx" type="tns:Fx"/>
     </xs:choice>
     <xs:choice minOccurs="0" maxOccurs="unbounded">
       <xs:element name="CalculatedVariableGenericFormula" type="tns:CalculatedVariableGenericFormula"/>
