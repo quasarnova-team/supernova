@@ -27,6 +27,11 @@
 #include <string>
 #include <vector>
 
+/* asio's read_until support would otherwise auto-link boost_regex on MSVC;
+ * nothing in this module uses it */
+#ifndef BOOST_ASIO_DISABLE_BOOST_REGEX
+#define BOOST_ASIO_DISABLE_BOOST_REGEX
+#endif
 #include <boost/asio.hpp>
 
 namespace PubSub
