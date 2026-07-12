@@ -21,6 +21,7 @@
 
 #include <PubSubEngine.h>
 
+#include <future>
 #include <stdexcept>
 
 #include <ArrayTools.h>
@@ -378,7 +379,7 @@ bool wireToUaVariant(const WireValue& value, UaVariant& out)
 
 }
 
-Engine::Engine(): m_running(false)
+Engine::Engine(): m_nodeManager(0), m_running(false)
 {
 }
 
@@ -408,23 +409,16 @@ void Engine::startIfStaged(AddressSpace::ASNodeManager* nodeManager)
     Configuration configuration = *m_staged;
     m_staged.reset();
 
+    m_nodeManager = nodeManager;
     m_ioContext.reset(new boost::asio::io_context());
     buildRuntimes(configuration, nodeManager);
-
-    m_workGuard.reset(new boost::asio::executor_work_guard<boost::asio::io_context::executor_type>(
-        boost::asio::make_work_guard(*m_ioContext)));
 
     for (size_t i = 0; i < m_writerGroups.size(); i++)
         scheduleGroup(m_writerGroups[i]);
     for (size_t i = 0; i < m_receivers.size(); i++)
-        m_receivers[i]->start();
+        m_receivers[i].receiver->start();
 
-    boost::asio::io_context* io = m_ioContext.get();
-    m_thread = std::thread([io]()
-    {
-        io->run();
-    });
-    m_running = true;
+    startIoThread();
 
     size_t writerCount = 0;
     for (size_t i = 0; i < m_writerGroups.size(); i++)
@@ -433,6 +427,91 @@ void Engine::startIfStaged(AddressSpace::ASNodeManager* nodeManager)
                   << " (" << m_writerGroups.size() << " writer group(s), "
                   << writerCount << " data set writer(s), "
                   << m_readers.size() << " data set reader(s))";
+}
+
+void Engine::ensureStarted(AddressSpace::ASNodeManager* nodeManager)
+{
+    if (m_running)
+    {
+        if (!m_nodeManager)
+            m_nodeManager = nodeManager;
+        return;
+    }
+    if (m_staged)
+        throw std::runtime_error("PubSub: a staged configuration awaits startIfStaged, refusing to start empty");
+
+    m_nodeManager = nodeManager;
+    m_ioContext.reset(new boost::asio::io_context());
+    startIoThread();
+    LOG(Log::INF) << "PubSub: engine started empty (dynamic reconfiguration only)";
+}
+
+void Engine::startIoThread()
+{
+    m_workGuard.reset(new boost::asio::executor_work_guard<boost::asio::io_context::executor_type>(
+        boost::asio::make_work_guard(*m_ioContext)));
+    boost::asio::io_context* io = m_ioContext.get();
+    m_thread = std::thread([io]()
+    {
+        io->run();
+    });
+    m_running = true;
+}
+
+void Engine::runOnIoThread(const std::function<void()>& work)
+{
+    std::promise<void> done;
+    std::future<void> future = done.get_future();
+    boost::asio::post(*m_ioContext, [&work, &done]()
+    {
+        try
+        {
+            work();
+            done.set_value();
+        }
+        catch (...)
+        {
+            done.set_exception(std::current_exception());
+        }
+    });
+    future.get();
+}
+
+void Engine::addDynamic(
+    const std::string&      ownerTag,
+    PublisherIdType         publisherIdType,
+    uint64_t                publisherId,
+    const ConnectionConfig& connection)
+{
+    if (!m_running)
+        throw std::runtime_error("PubSub: engine is not running (ensureStarted must come first)");
+    if (ownerTag.empty())
+        throw std::runtime_error("PubSub: dynamic entities need a non-empty owner tag");
+    AddressSpace::ASNodeManager* nodeManager = m_nodeManager;
+    if (!nodeManager)
+        throw std::runtime_error("PubSub: no node manager known to the engine");
+
+    runOnIoThread([this, &ownerTag, publisherIdType, publisherId, &connection, nodeManager]()
+    {
+        attachConnection(ownerTag, publisherIdType, publisherId, connection, nodeManager, /*startNow*/ true);
+    });
+    LOG(Log::INF) << "PubSub: dynamic configuration '" << ownerTag << "' attached"
+                  << " (" << connection.writerGroups.size() << " writer group(s), "
+                  << connection.readers.size() << " reader(s) on "
+                  << connection.host << ":" << connection.port << ")";
+}
+
+void Engine::removeDynamic(const std::string& ownerTag)
+{
+    if (!m_running)
+        return;
+    if (ownerTag.empty())
+        throw std::runtime_error("PubSub: dynamic entities need a non-empty owner tag");
+    runOnIoThread([this, &ownerTag]()
+    {
+        detachOwner(ownerTag);
+    });
+    LOG(Log::INF) << "PubSub: dynamic configuration '" << ownerTag << "' detached";
 }
 
 void Engine::shutdown()
@@ -446,7 +525,7 @@ void Engine::shutdown()
             m_writerGroups[i]->timer->cancel();
     }
     for (size_t i = 0; i < m_receivers.size(); i++)
-        m_receivers[i]->stop();
+        m_receivers[i].receiver->stop();
 
     m_workGuard.reset();
     m_ioContext->stop();
@@ -479,46 +558,117 @@ AddressSpace::ChangeNotifyingVariable* Engine::resolveVariable(
 void Engine::buildRuntimes(const Configuration& configuration, AddressSpace::ASNodeManager* nodeManager)
 {
     for (size_t c = 0; c < configuration.connections.size(); c++)
+        attachConnection(
+            /*ownerTag*/ std::string(),
+            configuration.publisherIdType,
+            configuration.publisherId,
+            configuration.connections[c],
+            nodeManager,
+            /*startNow*/ false);
+}
+
+void Engine::attachConnection(
+    const std::string&      ownerTag,
+    PublisherIdType         publisherIdType,
+    uint64_t                publisherId,
+    const ConnectionConfig& connection,
+    AddressSpace::ASNodeManager* nodeManager,
+    bool startNow)
+{
+    /* Build everything into locals first so a failure mid-way (bad address,
+     * unbindable socket) leaves the running engine untouched. */
+    std::vector< std::shared_ptr<WriterGroupRuntime> > newGroups;
+    std::vector< std::pair<ReaderKey, std::shared_ptr<ReaderRuntime> > > newReaders;
+
+    for (size_t g = 0; g < connection.writerGroups.size(); g++)
     {
-        const ConnectionConfig& connection = configuration.connections[c];
-
-        for (size_t g = 0; g < connection.writerGroups.size(); g++)
+        std::shared_ptr<WriterGroupRuntime> group(new WriterGroupRuntime());
+        group->ownerTag = ownerTag;
+        group->config = connection.writerGroups[g];
+        group->transmitter.reset(new UdpTransmitter(
+            *m_ioContext, connection.host, connection.port, connection.ttl, connection.loopback));
+        group->timer.reset(new boost::asio::steady_timer(*m_ioContext));
+        for (size_t w = 0; w < group->config.writers.size(); w++)
         {
-            std::shared_ptr<WriterGroupRuntime> group(new WriterGroupRuntime());
-            group->config = connection.writerGroups[g];
-            group->transmitter.reset(new UdpTransmitter(
-                *m_ioContext, connection.host, connection.port, connection.ttl, connection.loopback));
-            group->timer.reset(new boost::asio::steady_timer(*m_ioContext));
-            for (size_t w = 0; w < group->config.writers.size(); w++)
-            {
-                WriterRuntime writer;
-                writer.config = group->config.writers[w];
-                for (size_t f = 0; f < writer.config.fields.size(); f++)
-                    writer.variables.push_back(resolveVariable(nodeManager, writer.config.fields[f].address));
-                group->writers.push_back(writer);
-            }
-            group->publisherIdType = configuration.publisherIdType;
-            group->publisherId = configuration.publisherId;
-            m_writerGroups.push_back(group);
+            WriterRuntime writer;
+            writer.config = group->config.writers[w];
+            for (size_t f = 0; f < writer.config.fields.size(); f++)
+                writer.variables.push_back(resolveVariable(nodeManager, writer.config.fields[f].address));
+            group->writers.push_back(writer);
         }
+        group->publisherIdType = publisherIdType;
+        group->publisherId = publisherId;
+        newGroups.push_back(group);
+    }
 
-        if (!connection.readers.empty())
+    for (size_t r = 0; r < connection.readers.size(); r++)
+    {
+        std::shared_ptr<ReaderRuntime> reader(new ReaderRuntime());
+        reader->ownerTag = ownerTag;
+        reader->config = connection.readers[r];
+        for (size_t f = 0; f < reader->config.targets.size(); f++)
+            reader->targets.push_back(resolveVariable(nodeManager, reader->config.targets[f].address));
+        ReaderKey key(reader->config.publisherId, reader->config.writerGroupId, reader->config.dataSetWriterId);
+        if (m_readers.count(key))
+            throw std::runtime_error("PubSub: duplicate DataSetReader (publisherId/writerGroupId/dataSetWriterId)");
+        for (size_t i = 0; i < newReaders.size(); i++)
+            if (newReaders[i].first == key)
+                throw std::runtime_error("PubSub: duplicate DataSetReader (publisherId/writerGroupId/dataSetWriterId)");
+        newReaders.push_back(std::make_pair(key, reader));
+    }
+
+    ReceiverRuntime newReceiver;
+    if (!connection.readers.empty())
+    {
+        newReceiver.ownerTag = ownerTag;
+        newReceiver.receiver.reset(new UdpReceiver(
+            *m_ioContext, connection.host, connection.port,
+            [this](const uint8_t* data, size_t size) { handleDatagram(data, size); }));
+    }
+
+    /* Commit point — nothing below throws. */
+    for (size_t i = 0; i < newGroups.size(); i++)
+        m_writerGroups.push_back(newGroups[i]);
+    for (size_t i = 0; i < newReaders.size(); i++)
+        m_readers[newReaders[i].first] = newReaders[i].second;
+    if (newReceiver.receiver)
+        m_receivers.push_back(newReceiver);
+
+    if (startNow)
+    {
+        for (size_t i = 0; i < newGroups.size(); i++)
+            scheduleGroup(newGroups[i]);
+        if (newReceiver.receiver)
+            newReceiver.receiver->start();
+    }
+}
+
+void Engine::detachOwner(const std::string& ownerTag)
+{
+    for (size_t i = m_writerGroups.size(); i > 0; i--)
+    {
+        if (m_writerGroups[i - 1]->ownerTag == ownerTag)
         {
-            for (size_t r = 0; r < connection.readers.size(); r++)
-            {
-                std::shared_ptr<ReaderRuntime> reader(new ReaderRuntime());
-                reader->config = connection.readers[r];
-                for (size_t f = 0; f < reader->config.targets.size(); f++)
-                    reader->targets.push_back(resolveVariable(nodeManager, reader->config.targets[f].address));
-                ReaderKey key(reader->config.publisherId, reader->config.writerGroupId, reader->config.dataSetWriterId);
-                if (m_readers.count(key))
-                    throw std::runtime_error("PubSub: duplicate DataSetReader (publisherId/writerGroupId/dataSetWriterId)");
-                m_readers[key] = reader;
-            }
-            m_receivers.push_back(std::shared_ptr<UdpReceiver>(new UdpReceiver(
-                *m_ioContext, connection.host, connection.port,
-                [this](const uint8_t* data, size_t size) { handleDatagram(data, size); })));
+            if (m_writerGroups[i - 1]->timer)
+                m_writerGroups[i - 1]->timer->cancel();
+            m_writerGroups.erase(m_writerGroups.begin() + (i - 1));
         }
+    }
+    for (size_t i = m_receivers.size(); i > 0; i--)
+    {
+        if (m_receivers[i - 1].ownerTag == ownerTag)
+        {
+            m_receivers[i - 1].receiver->stop();
+            m_receivers.erase(m_receivers.begin() + (i - 1));
+        }
+    }
+    for (std::map<ReaderKey, std::shared_ptr<ReaderRuntime> >::iterator it = m_readers.begin();
+         it != m_readers.end(); )
+    {
+        if (it->second->ownerTag == ownerTag)
+            m_readers.erase(it++);
+        else
+            ++it;
     }
 }
 
