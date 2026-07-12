@@ -130,6 +130,30 @@ static void testTypeMismatchThrows()
     try { v.at("missing"); CHECK(false); } catch (const std::runtime_error&) { CHECK(true); }
 }
 
+static std::string nestedObjects(int depth)
+{
+    std::string text;
+    for (int i = 0; i < depth - 1; i++)
+        text += "{\"a\":";
+    text += "{\"a\":1";
+    for (int i = 0; i < depth - 1; i++)
+        text += "}";
+    text += "}";
+    return text;
+}
+
+static void testHostileInputLimits()
+{
+    JsonValue ok = parseJsonObject(nestedObjects(16));
+    CHECK(ok.kind() == JsonValue::KindObject);
+    CHECK(parseFails(nestedObjects(17)));
+    CHECK(parseFails(nestedObjects(5000)));
+    std::string big = "{\"a\":\"" + std::string(70000, 'x') + "\"}";
+    CHECK(parseFails(big));
+    std::string underLimit = "{\"a\":\"" + std::string(60000, 'x') + "\"}";
+    CHECK(parseJsonObject(underLimit).at("a").stringValue().size() == 60000);
+}
+
 static void testSerializeRoundTrip()
 {
     JsonValue out = JsonValue::makeObject();
@@ -157,6 +181,7 @@ int main()
     testNumbers();
     testRejections();
     testTypeMismatchThrows();
+    testHostileInputLimits();
     testSerializeRoundTrip();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);

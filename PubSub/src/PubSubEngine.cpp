@@ -451,9 +451,27 @@ void Engine::startIoThread()
     m_workGuard.reset(new boost::asio::executor_work_guard<boost::asio::io_context::executor_type>(
         boost::asio::make_work_guard(*m_ioContext)));
     boost::asio::io_context* io = m_ioContext.get();
+    /* An exception escaping a handler must not kill the io thread: dynamic
+     * reconfiguration blocks on this thread, so its death would wedge every
+     * later method call. Log and keep running. */
     m_thread = std::thread([io]()
     {
-        io->run();
+        for (;;)
+        {
+            try
+            {
+                io->run();
+                break;
+            }
+            catch (const std::exception& e)
+            {
+                LOG(Log::ERR) << "PubSub: exception escaped an io handler (engine continues): " << e.what();
+            }
+            catch (...)
+            {
+                LOG(Log::ERR) << "PubSub: unknown exception escaped an io handler (engine continues)";
+            }
+        }
     });
     m_running = true;
 }

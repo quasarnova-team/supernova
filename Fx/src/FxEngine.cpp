@@ -64,12 +64,23 @@ uint64_t requiredUnsigned(const JsonValue& object, const std::string& key, uint6
     if (!object.has(key))
         throw std::runtime_error("connection configuration: missing '" + key + "'");
     double value = object.at(key).numberValue();
-    if (value < 0 || value != value || value > static_cast<double>(maximum))
+    /* JSON numbers are doubles: above 2^53 they silently lose integer
+     * precision, so the projection refuses them rather than guessing. */
+    const double kJsonExactIntegerLimit = 9007199254740992.0;
+    if (value < 0 || value != value
+        || value > kJsonExactIntegerLimit
+        || value > static_cast<double>(maximum))
         throw std::runtime_error("connection configuration: '" + key + "' out of range");
     if (value != static_cast<double>(static_cast<uint64_t>(value)))
         throw std::runtime_error("connection configuration: '" + key + "' is not an integer");
     return static_cast<uint64_t>(value);
 }
+
+/* Endpoint objects are address-space nodes and node creation is permanent —
+ * without a ceiling a looping client could grow the address space without
+ * bound. Distinct connection names beyond the ceiling are refused; closed
+ * endpoints are reused by name. */
+const size_t kMaxEndpointsPerComponent = 64;
 
 std::string detail(const std::string& state, const std::string& message)
 {
@@ -395,6 +406,10 @@ UaStatus Engine::establishConnections(
         std::map<std::string, Endpoint>::iterator existing = m_endpoints.find(name);
         if (existing != m_endpoints.end() && existing->second.active)
             throw std::runtime_error("connection '" + name + "' is already established");
+        if (existing == m_endpoints.end() && m_endpoints.size() >= kMaxEndpointsPerComponent)
+            throw std::runtime_error("connection endpoint limit reached ("
+                                     + std::to_string(kMaxEndpointsPerComponent)
+                                     + "); close and reuse an existing connection name");
 
         PubSub::ConnectionConfig connection;
         PubSub::parseNetworkAddress(address, connection.host, connection.port);

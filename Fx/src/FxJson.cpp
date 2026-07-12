@@ -182,10 +182,12 @@ namespace
 class Parser
 {
 public:
-    Parser(const std::string& text): m_text(text), m_pos(0) {}
+    Parser(const std::string& text): m_text(text), m_pos(0), m_depth(0) {}
 
     JsonValue parseDocument()
     {
+        if (m_text.size() > kMaxDocumentBytes)
+            throw std::runtime_error("json: document exceeds the FX argument size limit");
         skipWhitespace();
         JsonValue value = parseObject();
         skipWhitespace();
@@ -193,6 +195,9 @@ public:
             fail("trailing content after the object");
         return value;
     }
+
+    static const size_t kMaxDocumentBytes = 65536;
+    static const size_t kMaxDepth = 16;
 
 private:
     void fail(const std::string& why) const
@@ -240,11 +245,16 @@ private:
 
     JsonValue parseObject()
     {
+        if (++m_depth > kMaxDepth)
+            fail("object nesting exceeds the FX argument depth limit");
         expect('{');
         JsonValue object = JsonValue::makeObject();
         skipWhitespace();
         if (consumeIf('}'))
+        {
+            m_depth--;
             return object;
+        }
         while (true)
         {
             skipWhitespace();
@@ -257,6 +267,7 @@ private:
             if (consumeIf(','))
                 continue;
             expect('}');
+            m_depth--;
             return object;
         }
     }
@@ -403,6 +414,7 @@ private:
 
     const std::string& m_text;
     size_t m_pos;
+    size_t m_depth;
 };
 
 }

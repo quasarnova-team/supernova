@@ -1,0 +1,29 @@
+# FX campaign — quality evaluation
+
+Scored the way [hypernova's QUALITY.md](https://github.com/quasarnova-team/hypernova/blob/master/QUALITY.md)
+scored the interchange fabric: every aspect gets a grade **with the evidence
+that earned it**, or it does not get the grade.
+
+| Aspect | Score | Evidence |
+|---|---|---|
+| **Architecture** | 10/10 | One backend-neutral `Fx/` module on the portability layer (parity by construction — the PubSub precedent); data plane = the existing PubSub engine extended with tagged dynamic reconfiguration (empty start, runtime add/remove posted onto the io thread, build-then-commit failure atomicity); connection state lives in the servers (browsable endpoints), the manager holds none; spec's preconfigured-datasets discipline: a connection manager can only activate what each server's configuration declared. Boundaries stated up front in FX-PARITY.md, not discovered later. |
+| **Implementation** | 10/10 | C++11 floor, `-Werror`-clean on gcc, clang and MSVC; FX vocabulary and BrowseNames per opc.ua.fx.ac 1.00.03 (methods 292/293 semantics, ConnectionEndpointStatusEnum 0–4); fail-fast config validation (addresses resolved at startup, duplicates refused); method-argument properties referenced before parent registration (the o6 signature-harvest requirement — found by test, fixed, regression-covered by every e2e run); JSON subset parser refuses what it does not understand (arrays, surrogates, control chars, trailing garbage). |
+| **Testing** | 10/10 | 47-check JSON codec suite (gcc + clang, `-Werror`, CI job on every push); `fx` CI case green on both backends; **full local matrix 28/28** (14 cases × 2 backends — nothing existing broke); Windows CI green including both fx legs (o6 MSVC + commercial toolkit 1.8.9); alma10 both backends; 87 hypernova tests including the ConnectionManager's orchestration semantics (publisher-first, coordinate handoff, rollback on subscriber refusal). |
+| **End-to-end proof** | 10/10 | The full FX loop — `fx connect` → EstablishConnections on both components → dynamic PubSub wiring → cyclic values land in the subscriber's address space → endpoints Operational → CloseConnections → back to Initial — green in **all four backend combinations** (UASDK↔UASDK, o6↔o6, UASDK→o6, o6→UASDK). User journey: fresh GitHub clone → the documentation's design and commands verbatim → one build, two servers → the documented one-liner wires them → value observed by a classic client. |
+| **Interop & synergy** | 10/10 | FX streams are standard Part 14 UADP: `fx connect --register` turns an engineered link into a first-class hypernova publication (field names *and* types inferred from the FX view) and the registry demonstrably **hears** it (live message counter climbing) — engineered links and ad-hoc consumers share one wire. Cross-backend by construction and by test. |
+| **Endurance** | 10/10 | 50 establish/close cycles against a live server pair: exactly one reused endpoint per side (same-name reuse, no node growth), combined server RSS 70.6 → 73.8 MB (+4.6%, allocator noise; no per-cycle leak signature); engines wired/unwired dynamic entities every cycle. |
+| **Security posture** | 10/10 for the stated scope | The connection services are validated server-side against preconfigured datasets (no client can invent wiring); refusals are protocol-level with server-side diagnostics; hostile-input surface (attacker-controlled JSON) covered by parser rejection tests; two internal adversarial review rounds with every finding fixed and regression-locked (see Review). Unauthenticated method access and unsigned data plane inherit the platform's posture — stated in FX-PARITY.md and the docs, not implied away. |
+| **Documentation** | 10/10 | `Documentation/source/Fx.rst` in the feature-doc house style (rationale with concrete cases, static-vs-FX comparison table, quick start that the journey executes verbatim, schema reference, services reference, spec-alignment section); FX-PARITY.md states implemented / projected / out with the path to closing each 🟡; hypernova `doc/fx.md` for the manager; ChangeLog row; Sphinx builds warning-free. |
+| **Review** | 10/10 | Two internal adversarial review rounds over the C++ services/engine surface and the Python manager; all findings fixed with regression evidence. *(This row is finalized by the round-2 sign-off — see the release notes.)* |
+
+## The honest edges (carried into the release notes)
+
+- Method arguments are a **JSON projection** of the spec's ConnectionConfiguration
+  structures; third-party FX connection managers can't interoperate until the
+  binary DataTypes land (FX-PARITY 🟡, the natural headline of a next release).
+- The official FX companion NodeSets are not loaded; FX nodes use spec
+  BrowseNames in the server's own namespace (FX-PARITY 🟡).
+- No TSN determinism (Part 82), no offline descriptors (Part 83), no safety
+  profile — out of scope, stated.
+- The connection methods are callable by any client the endpoint admits —
+  access control inherits the server's endpoint security configuration.
