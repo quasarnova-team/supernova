@@ -80,6 +80,18 @@ std::string detail(const std::string& state, const std::string& message)
     return out.serialize();
 }
 
+const char* publisherIdTypeName(PubSub::PublisherIdType type)
+{
+    switch (type)
+    {
+        case PubSub::PublisherIdByte:   return "Byte";
+        case PubSub::PublisherIdUInt16: return "UInt16";
+        case PubSub::PublisherIdUInt32: return "UInt32";
+        case PubSub::PublisherIdUInt64: return "UInt64";
+    }
+    return "UInt16";
+}
+
 }
 
 Engine::Engine(): m_nodeManager(0), m_automationComponent(0), m_started(false)
@@ -238,29 +250,30 @@ void Engine::buildModel()
         }
     }
 
+    /* Argument properties must be referenced from a method node BEFORE the
+     * method itself is added to its parent: the open62541 backend registers
+     * the method with the stack at that moment and reads the signature from
+     * the already-referenced properties (the generated classes follow the
+     * same order). */
     AddressSpace::ASDelegatingMethod<AutomationComponentNode>* establish =
         new AddressSpace::ASDelegatingMethod<AutomationComponentNode>(
             m_nodeManager->makeChildNodeId(acNodeId, "EstablishConnections"),
             "EstablishConnections",
             m_nodeManager->getNameSpaceIndex());
     establish->assignHandler(m_automationComponent, &AutomationComponentNode::callEstablishConnections);
-    status = m_nodeManager->addNodeAndReference(acNodeId, establish, OpcUaId_HasComponent);
-    if (!status.isGood())
-        throw std::runtime_error("Fx: adding EstablishConnections failed: " + std::string(status.toString().toUtf8()));
 
     {
+        UaUInt32Array dimensions;
         UaPropertyMethodArgument* arguments = new UaPropertyMethodArgument(
             m_nodeManager->makeChildNodeId(establish->nodeId(), "args"),
             OpcUa_AccessLevels_CurrentRead,
             1,
             UaPropertyMethodArgument::INARGUMENTS);
-        UaUInt32Array dimensions;
         arguments->setArgument(
             0, UaString("connectionConfiguration"), UaNodeId(OpcUaType_String, 0), -1, dimensions,
             UaLocalizedText("en_US", "connectionConfiguration"));
-        status = m_nodeManager->addNodeAndReference(establish, arguments, OpcUaId_HasProperty);
-        if (!status.isGood())
-            throw std::runtime_error("Fx: adding method arguments failed: " + std::string(status.toString().toUtf8()));
+        m_nodeManager->addNodeAndReferenceThrows(
+            establish, arguments, OpcUaId_HasProperty, establish->nodeId(), arguments->nodeId());
 
         UaPropertyMethodArgument* returns = new UaPropertyMethodArgument(
             m_nodeManager->makeChildNodeId(establish->nodeId(), "return_values"),
@@ -273,10 +286,12 @@ void Engine::buildModel()
         returns->setArgument(
             1, UaString("detail"), UaNodeId(OpcUaType_String, 0), -1, dimensions,
             UaLocalizedText("en_US", "detail"));
-        status = m_nodeManager->addNodeAndReference(establish, returns, OpcUaId_HasProperty);
-        if (!status.isGood())
-            throw std::runtime_error("Fx: adding method return values failed: " + std::string(status.toString().toUtf8()));
+        m_nodeManager->addNodeAndReferenceThrows(
+            establish, returns, OpcUaId_HasProperty, establish->nodeId(), returns->nodeId());
     }
+    m_nodeManager->addNodeAndReferenceThrows(
+        m_automationComponent, establish, OpcUaId_HasComponent,
+        m_automationComponent->nodeId(), establish->nodeId());
 
     AddressSpace::ASDelegatingMethod<AutomationComponentNode>* close =
         new AddressSpace::ASDelegatingMethod<AutomationComponentNode>(
@@ -284,23 +299,19 @@ void Engine::buildModel()
             "CloseConnections",
             m_nodeManager->getNameSpaceIndex());
     close->assignHandler(m_automationComponent, &AutomationComponentNode::callCloseConnections);
-    status = m_nodeManager->addNodeAndReference(acNodeId, close, OpcUaId_HasComponent);
-    if (!status.isGood())
-        throw std::runtime_error("Fx: adding CloseConnections failed: " + std::string(status.toString().toUtf8()));
 
     {
+        UaUInt32Array dimensions;
         UaPropertyMethodArgument* arguments = new UaPropertyMethodArgument(
             m_nodeManager->makeChildNodeId(close->nodeId(), "args"),
             OpcUa_AccessLevels_CurrentRead,
             1,
             UaPropertyMethodArgument::INARGUMENTS);
-        UaUInt32Array dimensions;
         arguments->setArgument(
             0, UaString("connectionId"), UaNodeId(OpcUaType_String, 0), -1, dimensions,
             UaLocalizedText("en_US", "connectionId"));
-        status = m_nodeManager->addNodeAndReference(close, arguments, OpcUaId_HasProperty);
-        if (!status.isGood())
-            throw std::runtime_error("Fx: adding method arguments failed: " + std::string(status.toString().toUtf8()));
+        m_nodeManager->addNodeAndReferenceThrows(
+            close, arguments, OpcUaId_HasProperty, close->nodeId(), arguments->nodeId());
 
         UaPropertyMethodArgument* returns = new UaPropertyMethodArgument(
             m_nodeManager->makeChildNodeId(close->nodeId(), "return_values"),
@@ -310,10 +321,12 @@ void Engine::buildModel()
         returns->setArgument(
             0, UaString("detail"), UaNodeId(OpcUaType_String, 0), -1, dimensions,
             UaLocalizedText("en_US", "detail"));
-        status = m_nodeManager->addNodeAndReference(close, returns, OpcUaId_HasProperty);
-        if (!status.isGood())
-            throw std::runtime_error("Fx: adding method return values failed: " + std::string(status.toString().toUtf8()));
+        m_nodeManager->addNodeAndReferenceThrows(
+            close, returns, OpcUaId_HasProperty, close->nodeId(), returns->nodeId());
     }
+    m_nodeManager->addNodeAndReferenceThrows(
+        m_automationComponent, close, OpcUaId_HasComponent,
+        m_automationComponent->nodeId(), close->nodeId());
 }
 
 const FunctionalEntityConfig* Engine::findEntity(const std::string& name) const
@@ -469,7 +482,20 @@ UaStatus Engine::establishConnections(
         m_endpoints[name] = endpoint;
 
         connectionId = name;
-        detailJson = detail(endpointStatusName(EndpointOperational), "");
+        JsonValue detailValue = JsonValue::makeObject();
+        detailValue.set("status", JsonValue::makeString(endpointStatusName(EndpointOperational)));
+        detailValue.set("address", JsonValue::makeString(address));
+        if (role == "publisher")
+        {
+            const OutputDataset* dataset = findOutput(*entity, datasetName);
+            JsonValue coordinates = JsonValue::makeObject();
+            coordinates.set("publisherIdType", JsonValue::makeString(publisherIdTypeName(publisherIdType)));
+            coordinates.set("publisherId", JsonValue::makeNumber(static_cast<double>(publisherId)));
+            coordinates.set("writerGroupId", JsonValue::makeNumber(dataset->writerGroupId));
+            coordinates.set("dataSetWriterId", JsonValue::makeNumber(dataset->dataSetWriterId));
+            detailValue.set("coordinates", coordinates);
+        }
+        detailJson = detailValue.serialize();
         LOG(Log::INF) << "Fx: connection '" << name << "' established ("
                       << role << " of " << entityName << "." << datasetName << " on " << address << ")";
         return UaStatus(OpcUa_Good);

@@ -5,6 +5,7 @@
     <d:cachevariable name="counter" addressSpaceWrite="forbidden" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Int32" initialStatus="OpcUa_Good" initialValue="0"/>
     <d:cachevariable name="temperature" addressSpaceWrite="forbidden" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Double" initialStatus="OpcUa_Good" initialValue="21.5"/>
     <d:cachevariable name="setpoint" addressSpaceWrite="regular" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Double" initialStatus="OpcUa_Good" initialValue="-1"/>
+    <d:cachevariable name="mirrorCount" addressSpaceWrite="regular" initializeWith="valueAndStatus" nullPolicy="nullForbidden" dataType="OpcUa_Int32" initialStatus="OpcUa_Good" initialValue="-1"/>
   </d:class>
   <d:root>
     <d:hasobjects instantiateUsing="configuration" class="FxTester"/>
