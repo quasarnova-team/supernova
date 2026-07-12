@@ -16,6 +16,23 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
+                <td valign="top">supernova (TBD)<font size="-1"><br>(TBD)</font><br></td>
+                <!-- Changes introduced -->
+                <td valign="top"><br>OPC UA FX (Field eXchange, OPC UA Parts 80/81 subset): a new backend-neutral <code>Fx</code> framework module. An <code>Fx</code> element in the server configuration declares an AutomationComponent with FunctionalEntities and their preconfigured input/output datasets over existing cache variables; <code>EstablishConnections</code>/<code>CloseConnections</code> methods on the component activate them at runtime, wiring the Pub/Sub engine dynamically (the engine gained empty start and tagged runtime add/remove) and maintaining browsable ConnectionEndpoint objects with live status. Connection management from the outside via the hypernova <code>fx</code> connection manager. Identical on both backends; FX end-to-end test green in all four backend combinations.</td>
+                <!-- Possible backward incompatibilities -->
+                <td valign="top"><br>(none)</td>
+                <!-- JIRA Release notes -->
+                <td valign="top">Tracked on GitHub:
+                    <ul>
+                        <li>[<a href='https://github.com/quasarnova-team/supernova/issues/12'>supernova#12</a>] - OPC UA FX epic</li>
+                    </ul>
+                </td>
+                <!-- Testing outcome -->
+                <td valign="top">fx smoke case both backends (alma9/alma10/Windows incl. commercial toolkit); FX e2e all 4 backend combinations; 47-check JSON codec suite (gcc/clang, -Werror); full local matrix green.</td>
+            </tr>
+
+            <tr>
+                <!-- Version -->
                 <td valign="top">supernova 1.1.0<font size="-1"><br>(12-Jul-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>Pub/Sub: one-dimensional arrays of all supported scalar types flow through both roles — published from array cache variables and received into them (portable via ArrayTools, identical on both backends). Wire-format proven bit-exact against the hypernova Python implementation (a DOUBLE[] round-trip through the server: hypernova → DataSetReader → address space → DataSetWriter → hypernova).</td>
