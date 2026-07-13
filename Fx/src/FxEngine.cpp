@@ -447,18 +447,33 @@ std::string Engine::activeConnectionNameFor(
     return std::string();
 }
 
-std::string Engine::firstFreeAutoName() const
+std::string Engine::firstFreeAutoName(const std::string& entityName) const
 {
-    for (size_t n = 1; n <= kMaxEndpointsPerComponent + 1; n++)
+    /* Prefer a fresh or reusable auto name. */
+    if (m_endpoints.size() < kMaxEndpointsPerComponent)
     {
-        std::ostringstream candidate;
-        candidate << "cep-" << n;
-        std::map<std::string, Endpoint>::const_iterator it = m_endpoints.find(candidate.str());
-        if (it == m_endpoints.end() || !it->second.active)
-            return candidate.str();
+        for (size_t n = 1; n <= kMaxEndpointsPerComponent; n++)
+        {
+            std::ostringstream candidate;
+            candidate << "cep-" << n;
+            std::map<std::string, Endpoint>::const_iterator it = m_endpoints.find(candidate.str());
+            if (it == m_endpoints.end())
+                return candidate.str();
+            if (!it->second.active && it->second.entity == entityName)
+                return candidate.str();
+        }
     }
-    /* Unreachable: the ceiling refuses first. */
-    return "cep-overflow";
+    /* At the ceiling no new name can exist — reuse any closed endpoint of
+     * this entity, so auto-naming keeps working for the lifetime of the
+     * server no matter how the namespace was flooded. */
+    for (std::map<std::string, Endpoint>::const_iterator it = m_endpoints.begin();
+         it != m_endpoints.end(); ++it)
+        if (!it->second.active && it->second.entity == entityName)
+            return it->first;
+    std::ostringstream message;
+    message << "connection endpoint limit reached (" << kMaxEndpointsPerComponent
+            << ") and every endpoint is busy — close a connection first";
+    throw std::runtime_error(message.str());
 }
 
 void Engine::setEndpointStatus(Endpoint& endpoint, EndpointStatus status)
@@ -544,7 +559,7 @@ UaStatus Engine::establishConnections(
                 throw std::runtime_error("'connectionName' must not be empty");
         }
         else
-            name = firstFreeAutoName();
+            name = firstFreeAutoName(entityName);
 
         std::map<std::string, Endpoint>::iterator existing = m_endpoints.find(name);
         if (existing != m_endpoints.end())

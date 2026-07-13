@@ -64,12 +64,22 @@ UdpReceiver::UdpReceiver(
     m_buffer(65536),
     m_handler(handler)
 {
-    address groupAddress = address::from_string(host);
+    address listenAddress = address::from_string(host);
     m_socket.open(udp::v4());
     m_socket.set_option(udp::socket::reuse_address(true));
-    m_socket.bind(udp::endpoint(udp::v4(), port));
-    if (groupAddress.is_multicast())
-        m_socket.set_option(boost::asio::ip::multicast::join_group(groupAddress));
+    if (listenAddress.is_multicast())
+    {
+        m_socket.bind(udp::endpoint(udp::v4(), port));
+        m_socket.set_option(boost::asio::ip::multicast::join_group(listenAddress));
+    }
+    else
+    {
+        /* Unicast: bind the given address itself (0.0.0.0 binds all
+         * interfaces). An address that is not local fails right here with a
+         * system error — a mistyped listen address is refused loudly instead
+         * of silently listening on everything. */
+        m_socket.bind(udp::endpoint(listenAddress, port));
+    }
 }
 
 void UdpReceiver::start()

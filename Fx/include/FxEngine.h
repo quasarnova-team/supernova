@@ -137,7 +137,7 @@ private:
     static DatasetRuntime* findDataset(std::vector<DatasetRuntime>& datasets, const std::string& name);
     std::string activeConnectionNameFor(
         const std::string& entity, const std::string& role, const std::string& dataset) const;
-    std::string firstFreeAutoName() const;
+    std::string firstFreeAutoName(const std::string& entityName) const;
     void setEndpointStatus(Endpoint& endpoint, EndpointStatus status);
     void refreshEndpointView(Endpoint& endpoint);
     /* Called from the PubSub io thread when a subscribing connection's first
