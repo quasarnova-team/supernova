@@ -16,6 +16,22 @@ ChangeLog
 
             <tr>
                 <!-- Version -->
+                <td valign="top">supernova 1.2.0<font size="-1"><br>(13-Jul-2026)</font><br></td>
+                <!-- Changes introduced -->
+                <td valign="top"><br>OPC UA FX (Field eXchange, OPC 10000-80/-81): a new backend-neutral <code>Fx</code> framework module implements the Part 81 interaction pattern in the preconfigured-datasets discipline. An <code>Fx</code> element in the server configuration declares the automation component, its functional entities and their input/output datasets (mapped onto cache variables; <code>Design.xml</code> needs no change); the server then exposes the component's self-description and the <code>EstablishConnections</code>/<code>CloseConnections</code> methods (JSON-projected arguments, strict parser), callable by any OPC UA client acting as connection manager. The data plane is the existing Pub/Sub engine, extended with tagged dynamic reconfiguration (empty start, runtime add/remove on the io thread, receiver refcounting); connection endpoints are browsable with a live <code>ConnectionEndpointStatusEnum</code> per Part 81 §10.17 (subscribers report PreOperational until their first received data). Also: the Pub/Sub UDP receiver now binds the configured unicast listen address itself — a non-local address is refused loudly instead of silently listening on all interfaces.</td>
+                <!-- Possible backward incompatibilities -->
+                <td valign="top"><br>A static <code>&lt;PubSub&gt;</code> <code>DataSetReader</code> connection whose address was a non-local unicast host used to listen on all interfaces; it now fails startup with a bind error (use <code>0.0.0.0</code>, a local interface address, or a multicast group).</td>
+                <!-- JIRA Release notes -->
+                <td valign="top">Tracked on GitHub:
+                    <ul>
+                        <li>[<a href='https://github.com/quasarnova-team/supernova/issues'>supernova</a>] - OPC UA FX</li>
+                    </ul>
+                </td>
+                <td valign="top">100-check JSON codec suite (gcc+clang, -Werror); fx smoke case both backends; FX e2e in all four backend combinations (establish → data lands → Operational → close → Initial → reuse); 31-probe hostile-client suite and 50-cycle churn, both backends.<br></td>
+            </tr>
+
+            <tr>
+                <!-- Version -->
                 <td valign="top">supernova 1.1.0<font size="-1"><br>(12-Jul-2026)</font><br></td>
                 <!-- Changes introduced -->
                 <td valign="top"><br>Pub/Sub: one-dimensional arrays of all supported scalar types flow through both roles — published from array cache variables and received into them (portable via ArrayTools, identical on both backends). Wire-format proven bit-exact against the hypernova Python implementation (a DOUBLE[] round-trip through the server: hypernova → DataSetReader → address space → DataSetWriter → hypernova).</td>
