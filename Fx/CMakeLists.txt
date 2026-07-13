@@ -3,6 +3,7 @@
 
 add_library( Fx OBJECT
     src/FxJson.cpp
+    src/FxConfiguration.cpp
     src/FxXsdBinding.cpp
     src/FxEngine.cpp
 )

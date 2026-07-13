@@ -74,6 +74,14 @@ struct Configuration
     std::vector<FunctionalEntityConfig> entities;
 };
 
+/* Defaults empty field names from the leaf of their address
+ * ("FX1.temperature" -> "temperature"), then validates everything the XSD
+ * alone cannot express: unique names at every level, component-wide unique
+ * writer groups, publisherId within its wire type, positive intervals,
+ * non-empty datasets and addresses. Throws std::runtime_error with a message
+ * precise enough to fix the configuration file on first read. */
+void finalizeAndValidate(Configuration& configuration);
+
 }
 
 #endif /* FX_INCLUDE_FXCONFIGURATION_H_ */

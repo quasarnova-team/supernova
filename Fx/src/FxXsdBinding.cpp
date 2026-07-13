@@ -21,8 +21,6 @@
 
 #include <FxXsdBinding.h>
 
-#include <set>
-#include <sstream>
 #include <stdexcept>
 
 #include <Configuration.hxx>
@@ -33,51 +31,25 @@ namespace Fx
 namespace
 {
 
-void refuse(const std::string& what)
-{
-    throw std::runtime_error("Fx configuration: " + what);
-}
-
-void requireUnique(std::set<std::string>& seen, const std::string& name, const std::string& what)
-{
-    if (name.empty())
-        refuse("empty " + what + " name");
-    if (!seen.insert(name).second)
-        refuse("duplicate " + what + " '" + name + "'");
-}
-
-std::string leafOf(const std::string& address)
-{
-    const size_t dot = address.find_last_of('.');
-    return dot == std::string::npos ? address : address.substr(dot + 1);
-}
-
+/* The source/target discipline is a property of the XML representation
+ * (which attribute carries the address, per dataset direction); everything
+ * representation-independent is validated by finalizeAndValidate. */
 template <typename XsdField>
-DatasetField bindField(
-    const XsdField&        xsdField,
-    bool                   isOutput,
-    const std::string&     datasetName,
-    std::set<std::string>& fieldNames)
+DatasetField bindField(const XsdField& xsdField, bool isOutput, const std::string& datasetName)
 {
-    DatasetField field;
-
     const bool hasSource = xsdField.source().present();
     const bool hasTarget = xsdField.target().present();
     if (isOutput && (!hasSource || hasTarget))
-        refuse("OutputDataset '" + datasetName + "': Fields take a 'source' attribute (and no 'target')");
+        throw std::runtime_error("Fx configuration: OutputDataset '" + datasetName
+            + "': Fields take a 'source' attribute (and no 'target')");
     if (!isOutput && (!hasTarget || hasSource))
-        refuse("InputDataset '" + datasetName + "': Fields take a 'target' attribute (and no 'source')");
+        throw std::runtime_error("Fx configuration: InputDataset '" + datasetName
+            + "': Fields take a 'target' attribute (and no 'source')");
 
+    DatasetField field;
     field.address = isOutput ? xsdField.source().get() : xsdField.target().get();
-    if (field.address.empty())
-        refuse("dataset '" + datasetName + "' has a Field with an empty address");
-
-    field.name = xsdField.name().present() ? std::string(xsdField.name().get()) : leafOf(field.address);
-    if (field.name.empty())
-        refuse("dataset '" + datasetName + "' has a Field with an empty name");
-    if (!fieldNames.insert(field.name).second)
-        refuse("dataset '" + datasetName + "' has two Fields named '" + field.name
-               + "' (give one an explicit name=\"...\")");
+    if (xsdField.name().present())
+        field.name = xsdField.name().get();
     return field;
 }
 
@@ -86,81 +58,38 @@ DatasetField bindField(
 Configuration configurationFromXsd(const ::Configuration::Fx& xsd)
 {
     Configuration configuration;
-
     configuration.automationComponent = xsd.automationComponent();
-    if (configuration.automationComponent.empty())
-        refuse("empty automationComponent name");
-
     configuration.publisherIdType = PubSub::parsePublisherIdType(xsd.publisherIdType());
     configuration.publisherId = xsd.publisherId();
-    if (configuration.publisherId > PubSub::publisherIdMaximum(configuration.publisherIdType))
-    {
-        std::ostringstream message;
-        message << "publisherId " << configuration.publisherId
-                << " does not fit publisherIdType " << xsd.publisherIdType();
-        refuse(message.str());
-    }
-
-    std::set<std::string> entityNames;
-    std::set<unsigned int> writerGroupIds;
 
     for (const auto& xsdEntity : xsd.FunctionalEntity())
     {
         FunctionalEntityConfig entity;
         entity.name = xsdEntity.name();
-        requireUnique(entityNames, entity.name, "FunctionalEntity");
-
-        std::set<std::string> outputNames;
-        std::set<std::string> inputNames;
 
         for (const auto& xsdOutput : xsdEntity.OutputDataset())
         {
             OutputDatasetConfig dataset;
             dataset.name = xsdOutput.name();
-            requireUnique(outputNames, dataset.name, "OutputDataset");
-
             dataset.writerGroupId = xsdOutput.writerGroupId();
             dataset.dataSetWriterId = xsdOutput.dataSetWriterId();
-            /* Each output dataset owns its writer group: two datasets sharing
-             * a group id would interleave independent sequence-number streams
-             * under one group on the wire. */
-            if (!writerGroupIds.insert(dataset.writerGroupId).second)
-            {
-                std::ostringstream message;
-                message << "writerGroupId " << dataset.writerGroupId
-                        << " is used by more than one OutputDataset";
-                refuse(message.str());
-            }
-
             dataset.publishingIntervalMs = xsdOutput.publishingIntervalMs();
-            if (!(dataset.publishingIntervalMs > 0))
-                refuse("OutputDataset '" + dataset.name + "': publishingIntervalMs must be positive");
-
-            std::set<std::string> fieldNames;
             for (const auto& xsdField : xsdOutput.Field())
-                dataset.fields.push_back(bindField(xsdField, true, dataset.name, fieldNames));
+                dataset.fields.push_back(bindField(xsdField, true, dataset.name));
             entity.outputs.push_back(dataset);
         }
-
         for (const auto& xsdInput : xsdEntity.InputDataset())
         {
             InputDatasetConfig dataset;
             dataset.name = xsdInput.name();
-            requireUnique(inputNames, dataset.name, "InputDataset");
-
-            std::set<std::string> fieldNames;
             for (const auto& xsdField : xsdInput.Field())
-                dataset.fields.push_back(bindField(xsdField, false, dataset.name, fieldNames));
+                dataset.fields.push_back(bindField(xsdField, false, dataset.name));
             entity.inputs.push_back(dataset);
         }
-
-        if (entity.outputs.empty() && entity.inputs.empty())
-            refuse("FunctionalEntity '" + entity.name + "' declares no datasets");
         configuration.entities.push_back(entity);
     }
 
-    if (configuration.entities.empty())
-        refuse("no FunctionalEntity elements");
+    finalizeAndValidate(configuration);
     return configuration;
 }
 

@@ -44,3 +44,20 @@ jobs:
           clang++ -std=c++11 -Wall -Wextra -Werror -IFx/include \
               Fx/src/FxJson.cpp Fx/test/test_json.cpp -o test_json_clang
           ./test_json_clang
+
+  fx-configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run (g++, C++11, -Werror)
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror -IFx/include -IPubSub/include \
+              Fx/src/FxConfiguration.cpp PubSub/src/PubSubConfiguration.cpp \
+              Fx/test/test_configuration.cpp -o test_configuration
+          ./test_configuration
+      - name: Build and run (clang++, C++11, -Werror)
+        run: |
+          clang++ -std=c++11 -Wall -Wextra -Werror -IFx/include -IPubSub/include \
+              Fx/src/FxConfiguration.cpp PubSub/src/PubSubConfiguration.cpp \
+              Fx/test/test_configuration.cpp -o test_configuration_clang
+          ./test_configuration_clang
