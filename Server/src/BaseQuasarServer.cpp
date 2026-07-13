@@ -543,8 +543,23 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
         AddressSpace::ASNodeManager *nm)
 {
     LOG(Log::INF) << "Configuration Initializer Handler";
-    if (!overridableConfigure(configFileName, nm))
-        return OpcUa_Bad; // error is already printed in configure()
+    try
+    {
+        if (!overridableConfigure(configFileName, nm))
+        {
+            m_configurationHandlerFailed = true;
+            return OpcUa_Bad; // error is already printed in configure()
+        }
+    }
+    catch (const std::exception& e)
+    {
+        /* configure() can throw beyond its own catch clauses (e.g. an engine
+         * staging call refusing an invalid section) — surface it here rather
+         * than letting it unwind into backend SDK code. */
+        LOG(Log::ERR) << "Configuration failed: " << e.what();
+        m_configurationHandlerFailed = true;
+        return OpcUa_Bad;
+    }
     LOG(Log::DBG) << __FUNCTION__ << " Environment vars: " << std::endl << getProcessEnvironmentVariables();
     validateDeviceTree();
     Meta::initializeMeta(nm);

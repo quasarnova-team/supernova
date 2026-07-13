@@ -22,6 +22,7 @@
 #include <FxConfiguration.h>
 
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -180,6 +181,24 @@ int main()
         Configuration c = valid();
         c.entities[0].outputs[0].publishingIntervalMs = 0;
         CHECK(refusedWith(c, "must be positive"));
+    }
+    {
+        /* xs:double admits INF — a cast of that to a duration is UB */
+        Configuration c = valid();
+        c.entities[0].outputs[0].publishingIntervalMs = std::numeric_limits<double>::infinity();
+        CHECK(refusedWith(c, "one day"));
+    }
+    {
+        Configuration c = valid();
+        c.entities[0].outputs[0].publishingIntervalMs = 1e300;
+        CHECK(refusedWith(c, "one day"));
+    }
+    {
+        /* larger ids would round through the services' JSON numbers */
+        Configuration c = valid();
+        c.publisherIdType = PubSub::PublisherIdUInt64;
+        c.publisherId = 9007199254740993ull; /* 2^53 + 1 */
+        CHECK(refusedWith(c, "2^53"));
     }
     {
         Configuration c = valid();

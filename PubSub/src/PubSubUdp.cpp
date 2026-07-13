@@ -95,12 +95,17 @@ void UdpReceiver::stop()
 
 void UdpReceiver::armReceive()
 {
+    /* self keeps the receiver alive until the completion runs: a completion
+     * may already be queued when stop() closes the socket and the owner
+     * drops its reference. After close, is_open() is false and the handler
+     * neither delivers nor re-arms. */
+    std::shared_ptr<UdpReceiver> self = shared_from_this();
     m_socket.async_receive_from(
         boost::asio::buffer(m_buffer),
         m_sender,
-        [this](const boost::system::error_code& error, size_t bytes)
+        [self](const boost::system::error_code& error, size_t bytes)
         {
-            if (error == boost::asio::error::operation_aborted)
+            if (error == boost::asio::error::operation_aborted || !self->m_socket.is_open())
                 return;
             if (error)
             {
@@ -108,9 +113,9 @@ void UdpReceiver::armReceive()
             }
             else if (bytes > 0)
             {
-                m_handler(&m_buffer[0], bytes);
+                self->m_handler(&self->m_buffer[0], bytes);
             }
-            armReceive();
+            self->armReceive();
         });
 }
 

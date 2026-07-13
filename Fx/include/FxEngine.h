@@ -28,6 +28,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -137,6 +138,7 @@ private:
     static DatasetRuntime* findDataset(std::vector<DatasetRuntime>& datasets, const std::string& name);
     std::string activeConnectionNameFor(
         const std::string& entity, const std::string& role, const std::string& dataset) const;
+    size_t endpointCountOf(const std::string& entityName) const;
     std::string firstFreeAutoName(const std::string& entityName) const;
     void setEndpointStatus(Endpoint& endpoint, EndpointStatus status);
     void refreshEndpointView(Endpoint& endpoint);
@@ -151,6 +153,10 @@ private:
     AutomationComponentNode* m_automationComponent;
     std::vector<EntityRuntime> m_entities;
     std::map<std::string, Endpoint> m_endpoints;
+    /* Names whose endpoint view failed half-way through node creation (nodes
+     * are permanent, so the name cannot be rebuilt); never auto-picked and
+     * refused explicitly with a precise reason. */
+    std::set<std::string> m_poisonedNames;
     std::mutex m_mutex;
     std::atomic<bool> m_started;
 };

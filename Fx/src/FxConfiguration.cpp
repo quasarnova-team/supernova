@@ -84,6 +84,12 @@ void finalizeAndValidate(Configuration& configuration)
                 << PubSub::publisherIdTypeName(configuration.publisherIdType);
         refuse(message.str());
     }
+    /* The connection services carry coordinates as JSON numbers, which are
+     * exact only up to 2^53 — larger publisher ids would round silently on
+     * the manager side. */
+    if (configuration.publisherId > 9007199254740992ull)
+        refuse("publisherId above 2^53 is not supported "
+               "(the connection services exchange coordinates as JSON numbers)");
     if (configuration.entities.empty())
         refuse("no FunctionalEntity elements");
 
@@ -109,8 +115,13 @@ void finalizeAndValidate(Configuration& configuration)
                         << " is used by more than one OutputDataset";
                 refuse(message.str());
             }
-            if (!(dataset.publishingIntervalMs > 0))
-                refuse("OutputDataset '" + dataset.name + "': publishingIntervalMs must be positive");
+            /* xs:double admits INF and huge values; a cast of such an
+             * interval to an integer duration is undefined — bound it to
+             * something a scheduler can mean (one day). */
+            if (!(dataset.publishingIntervalMs > 0)
+                || dataset.publishingIntervalMs > 86400000.0)
+                refuse("OutputDataset '" + dataset.name
+                       + "': publishingIntervalMs must be positive and at most 86400000 (one day)");
             finalizeFields(dataset.fields, dataset.name, "OutputDataset");
         }
 

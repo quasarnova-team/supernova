@@ -432,6 +432,7 @@ void Engine::startIfStaged(AddressSpace::ASNodeManager* nodeManager)
 
 void Engine::ensureStarted()
 {
+    std::lock_guard<std::mutex> lifecycle(m_lifecycleMutex);
     if (m_running)
         return;
     if (m_staged)
@@ -462,9 +463,12 @@ void Engine::runOnIoThread(const std::function<void()>& fn)
         fn();
         return;
     }
-    std::packaged_task<void()> task(fn);
-    std::future<void> done = task.get_future();
-    boost::asio::post(*m_ioContext, std::ref(task));
+    /* The task is owned by the queued handler (not referenced from this
+     * stack): if the io_context ever dropped it unexecuted, the future would
+     * surface broken_promise instead of blocking forever. */
+    std::shared_ptr< std::packaged_task<void()> > task(new std::packaged_task<void()>(fn));
+    std::future<void> done = task->get_future();
+    boost::asio::post(*m_ioContext, [task]() { (*task)(); });
     done.get();
 }
 
@@ -505,6 +509,7 @@ void Engine::addDynamicWriterGroup(
     uint64_t           publisherId,
     const DynamicWriterGroup& group)
 {
+    std::lock_guard<std::mutex> lifecycle(m_lifecycleMutex);
     if (!m_running)
         throw std::runtime_error("PubSub: engine is not running");
     if (group.fields.empty())
@@ -564,6 +569,7 @@ void Engine::addDynamicWriterGroup(
 
 void Engine::addDynamicReader(const std::string& ownerTag, const DynamicReader& reader)
 {
+    std::lock_guard<std::mutex> lifecycle(m_lifecycleMutex);
     if (!m_running)
         throw std::runtime_error("PubSub: engine is not running");
     if (reader.targets.empty())
@@ -612,6 +618,7 @@ void Engine::addDynamicReader(const std::string& ownerTag, const DynamicReader& 
 
 void Engine::removeDynamic(const std::string& ownerTag)
 {
+    std::lock_guard<std::mutex> lifecycle(m_lifecycleMutex);
     if (!m_running)
         return;
 
@@ -624,6 +631,7 @@ void Engine::removeDynamic(const std::string& ownerTag)
         {
             if ((*it)->ownerTag == ownerTag)
             {
+                (*it)->stopped = true;
                 (*it)->timer->cancel();
                 it = m_writerGroups.erase(it);
                 removedGroups++;
@@ -653,8 +661,28 @@ void Engine::removeDynamic(const std::string& ownerTag)
         LOG(Log::DBG) << "PubSub: removeDynamic found nothing under [" << ownerTag << "]";
 }
 
+bool Engine::readerDataSeen(const std::string& ownerTag)
+{
+    std::lock_guard<std::mutex> lifecycle(m_lifecycleMutex);
+    if (!m_running)
+        return false;
+    bool seen = false;
+    runOnIoThread([&]()
+    {
+        for (std::map<ReaderKey, std::shared_ptr<ReaderRuntime> >::iterator it = m_readers.begin();
+             it != m_readers.end(); ++it)
+            if (it->second->ownerTag == ownerTag && it->second->dataSeen)
+            {
+                seen = true;
+                break;
+            }
+    });
+    return seen;
+}
+
 void Engine::shutdown()
 {
+    std::lock_guard<std::mutex> lifecycle(m_lifecycleMutex);
     if (!m_running)
         return;
 
@@ -664,6 +692,7 @@ void Engine::shutdown()
     {
         for (size_t i = 0; i < m_writerGroups.size(); i++)
         {
+            m_writerGroups[i]->stopped = true;
             if (m_writerGroups[i]->timer)
                 m_writerGroups[i]->timer->cancel();
         }
@@ -754,7 +783,7 @@ void Engine::scheduleGroup(const std::shared_ptr<WriterGroupRuntime>& group)
     group->timer->expires_after(std::chrono::microseconds(microseconds));
     group->timer->async_wait([this, group](const boost::system::error_code& error)
     {
-        if (error == boost::asio::error::operation_aborted)
+        if (error == boost::asio::error::operation_aborted || group->stopped)
             return;
         publishGroup(group);
         scheduleGroup(group);
@@ -844,10 +873,14 @@ void Engine::handleDatagram(const uint8_t* data, size_t size)
                 LOG(Log::WRN) << "PubSub: writing received value to '"
                               << reader.config.targets[f].address << "' failed";
         }
-        if (count > 0 && !reader.firstDataSignalled && reader.onFirstData)
+        if (count > 0)
         {
-            if (reader.onFirstData())
-                reader.firstDataSignalled = true;
+            reader.dataSeen = true;
+            if (!reader.firstDataSignalled && reader.onFirstData)
+            {
+                if (reader.onFirstData())
+                    reader.firstDataSignalled = true;
+            }
         }
     }
 }

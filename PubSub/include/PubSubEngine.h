@@ -30,6 +30,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -105,7 +106,9 @@ public:
      * (single-thread confinement of all runtime state); failures — duplicate
      * wire coordinates, an unbindable address — throw std::runtime_error and
      * leave the engine exactly as it was. Entities added under one ownerTag
-     * are removed together by removeDynamic(ownerTag). */
+     * are removed together by removeDynamic(ownerTag). The dynamic API is
+     * serialized against shutdown by an internal lifecycle mutex; do not call
+     * it from the engine's own io thread. */
     void addDynamicWriterGroup(
         const std::string& ownerTag,
         PublisherIdType    publisherIdType,
@@ -113,6 +116,10 @@ public:
         const DynamicWriterGroup& group);
     void addDynamicReader(const std::string& ownerTag, const DynamicReader& reader);
     void removeDynamic(const std::string& ownerTag);
+    /* True when any reader under ownerTag has applied at least one
+     * DataSetMessage — lets a caller that missed the onFirstData callback
+     * (it fires best-effort) reconcile the state it derives from it. */
+    bool readerDataSeen(const std::string& ownerTag);
 
     void shutdown();
     bool isRunning() const { return m_running; }
@@ -133,12 +140,18 @@ private:
 
     struct WriterGroupRuntime
     {
-        WriterGroupRuntime(): sequenceNumber(0), publisherIdType(PublisherIdUInt16), publisherId(0) {}
+        WriterGroupRuntime(): sequenceNumber(0), publisherIdType(PublisherIdUInt16), publisherId(0),
+                              stopped(false) {}
         WriterGroupConfig config;
         uint16_t sequenceNumber;
         PublisherIdType publisherIdType;
         uint64_t publisherId;
         std::string ownerTag;  /* empty = static (configured at startup) */
+        /* Set (on the io thread) when the group is removed: a timer completion
+         * that was already queued when cancel() ran arrives with success and
+         * would otherwise publish and re-arm a group that no container
+         * references any more. The handler checks this and lets go. */
+        bool stopped;
         std::shared_ptr<UdpTransmitter> transmitter;
         std::shared_ptr<boost::asio::steady_timer> timer;
         std::vector<WriterRuntime> writers;
@@ -146,7 +159,7 @@ private:
 
     struct ReaderRuntime
     {
-        ReaderRuntime(): port(0), firstDataSignalled(false) {}
+        ReaderRuntime(): port(0), firstDataSignalled(false), dataSeen(false) {}
         DataSetReaderConfig config;
         std::string ownerTag;  /* empty = static */
         std::string host;      /* receiver endpoint this reader listens on */
@@ -154,6 +167,7 @@ private:
         std::vector<AddressSpace::ChangeNotifyingVariable*> targets;
         std::function<bool()> onFirstData;
         bool firstDataSignalled;
+        bool dataSeen;
     };
 
     /* One UDP receiver per (host, port), shared by all readers listening
@@ -189,6 +203,9 @@ private:
     std::vector< std::shared_ptr<WriterGroupRuntime> > m_writerGroups;
     std::map<ReceiverKey, ReceiverEntry> m_receivers;
     std::map<ReaderKey, std::shared_ptr<ReaderRuntime> > m_readers;
+    /* Serializes the dynamic API and ensureStarted against shutdown, so a
+     * caller can never post onto an io_context being torn down. */
+    std::mutex m_lifecycleMutex;
     std::atomic<bool> m_running;
 };
 

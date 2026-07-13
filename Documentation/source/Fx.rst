@@ -219,7 +219,8 @@ Configuration file schema regarding FX
    * - ``publisherId``
      - required
      - The component's Pub/Sub publisher identity, shared by all its
-       output datasets (mirrors the ``PubSub`` element's attribute)
+       output datasets (mirrors the ``PubSub`` element's attribute; at
+       most 2^53 — the services exchange coordinates as JSON numbers)
    * - ``publisherIdType``
      - ``UInt16``
      - Wire type of the publisher id: ``Byte``, ``UInt16``, ``UInt32`` or
@@ -250,8 +251,8 @@ publish:
      - DataSetWriter id within the group
    * - ``publishingIntervalMs``
      - ``100``
-     - Default publishing interval; a connection manager may override it
-       per connection
+     - Default publishing interval (positive, at most one day); a
+       connection manager may override it per connection
 
 ``InputDataset`` (zero or more per entity) — what this entity can
 receive; attribute ``name`` (required, unique among the entity's input
@@ -318,10 +319,12 @@ The connection services
        interface address, or ``0.0.0.0`` (a non-local address is refused)
    * - ``connectionName``
      - both
-     - Optional endpoint name; auto-named ``cep-N`` when omitted
+     - Optional endpoint name (at most 64 bytes, no control characters);
+       auto-named ``cep-N`` when omitted
    * - ``publishingIntervalMs``
      - publisher
-     - Optional override of the dataset's configured interval
+     - Optional override of the dataset's configured interval (positive,
+       at most 86400000 — one day)
    * - ``ttl``
      - publisher
      - Optional multicast time-to-live (0–255, default 1)
@@ -378,10 +381,10 @@ Connection endpoints and their status
      - Reported in ``detail`` for refused requests
 
 | Endpoints are bounded: at most 64 distinct connection names per
-  component. Beyond that, establishes with new names are refused;
-  closed endpoints are reused by name (auto-naming reuses closed
-  endpoints automatically), so long-running managers churn within the
-  bound.
+  functional entity (one entity's name churn can never starve another).
+  Beyond that, establishes with new names are refused; closed endpoints
+  are reused by name (auto-naming reuses closed endpoints automatically),
+  so long-running managers churn within the bound.
 
 Notes and restrictions
 ----------------------
