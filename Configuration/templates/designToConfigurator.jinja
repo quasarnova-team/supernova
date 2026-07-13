@@ -37,6 +37,8 @@
 #include <FreeVariablesEngine.h>
 #include <PubSubEngine.h>
 #include <PubSubXsdBinding.h>
+#include <FxEngine.h>
+#include <FxXsdBinding.h>
 
 #include <meta.h>
 
@@ -290,6 +292,9 @@ bool configure (std::string fileName, AddressSpace::ASNodeManager *nm, ConfigXml
 
   if (theConfiguration->PubSub().present())
     PubSub::Engine::instance().stageConfiguration(PubSub::configurationFromXsd(theConfiguration->PubSub().get()));
+
+  if (theConfiguration->Fx().present())
+    Fx::Engine::instance().stageConfiguration(Fx::configurationFromXsd(theConfiguration->Fx().get()));
 
   UaNodeId asRootNodeId = UaNodeId(OpcUaId_ObjectsFolder, 0);
   Device::DRoot *dRoot = Device::DRoot::getInstance();

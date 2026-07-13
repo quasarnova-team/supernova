@@ -64,6 +64,7 @@
 #include <MetaBuildInfo.h>
 #include <CalculatedVariablesEngine.h>
 #include <PubSubEngine.h>
+#include <FxEngine.h>
 #include <Utils.h>
 
 #include <OpcuaToolkitInfo.hpp>
@@ -182,6 +183,10 @@ int BaseQuasarServer::serverRun(
             " caught in BaseQuasarServer::serverRun:  [" << Quasar::TermColors::ForeRed() << e.what() << Quasar::TermColors::StyleReset() << "]";
         serverReturnCode = 1;
     }
+    /* Order is load-bearing: Fx teardown removes its dynamic Pub/Sub entities
+     * by posting work onto the PubSub engine's io thread, so the Fx engine
+     * must be fully stopped before the PubSub engine stops that thread. */
+    Fx::Engine::instance().shutdown();
     PubSub::Engine::instance().shutdown();
     AddressSpace::SourceVariables_destroySourceVariablesThreadPool ();
     shutdown();  // this is typically overridden by the developer
@@ -547,6 +552,21 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     catch (const std::exception& e)
     {
         LOG(Log::ERR) << "PubSub initialization failed: " << e.what();
+        return OpcUa_Bad;
+    }
+    try
+    {
+        Fx::Engine::instance().startIfStaged(nm);
+    }
+    catch (const std::exception& e)
+    {
+        LOG(Log::ERR) << "Fx initialization failed: " << e.what();
+        /* The PubSub engine may already be running its io thread. Returning
+         * Bad from this after-startup handler aborts the server on a path
+         * that never reaches serverRun's teardown, which would leave a
+         * joinable io thread behind — stop both engines before failing. */
+        Fx::Engine::instance().shutdown();
+        PubSub::Engine::instance().shutdown();
         return OpcUa_Bad;
     }
     return OpcUa_Good;

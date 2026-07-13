@@ -222,6 +222,17 @@
         "o6",
         "uasdk"
       ]
+    },
+    {
+      "name": "fx",
+      "kind": "smoke",
+      "design": "test_fx/Design.xml",
+      "config": "test_fx/config.xml",
+      "generate_devices": true,
+      "backends": [
+        "o6",
+        "uasdk"
+      ]
     }
   ],
   "probes": {
