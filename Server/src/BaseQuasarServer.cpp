@@ -179,6 +179,10 @@ int BaseQuasarServer::serverRun(
         {
             LOG(Log::ERR) << "Server startup aborted: configuration initialization failed "
                           << "(the exact problem is logged above).";
+            /* What the SIGINT handler would do: the open62541 backend's run
+             * thread loops on this flag and its stop() only joins — without
+             * this the aborted server would hang in stop() until a signal. */
+            ShutDown();
             serverReturnCode = 1;
         }
         else

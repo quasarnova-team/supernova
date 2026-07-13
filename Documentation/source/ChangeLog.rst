@@ -27,7 +27,7 @@ ChangeLog
                         <li>[<a href='https://github.com/quasarnova-team/supernova/issues'>supernova</a>] - OPC UA FX</li>
                     </ul>
                 </td>
-                <td valign="top">100-check JSON codec suite (gcc+clang, -Werror); fx smoke case both backends; FX e2e in all four backend combinations (establish → data lands → Operational → close → Initial → reuse); 31-probe hostile-client suite and 50-cycle churn, both backends.<br></td>
+                <td valign="top">100-check JSON codec suite (gcc+clang, -Werror); fx smoke case both backends; FX e2e in all four backend combinations (establish → data lands → Operational → close → Initial → reuse); 34-probe hostile-client suite and 50-cycle churn, both backends.<br></td>
             </tr>
 
             <tr>

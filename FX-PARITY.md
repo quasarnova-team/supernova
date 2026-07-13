@@ -16,7 +16,7 @@ recorded in [FX-ARCHITECTURE.md](FX-ARCHITECTURE.md).
 | InputData / OutputData (§6.4.2) | Per-dataset descriptor views whose fields name the mapped cache variables (resolved fail-fast at startup); live values stay at their canonical addresses | ✅ implemented (descriptor projection — see C3) |
 | Preconfigured datasets discipline | A connection manager can only activate datasets the configuration declared — nothing else | ✅ implemented |
 | `EstablishConnections` / `CloseConnections` (§6.2.4/§6.2.5) | On the automation component, callable by any OPC UA client acting as connection manager | ✅ implemented |
-| ConnectionEndpoints folder + endpoint objects (§6.6) | Created per connection; persist and are reused by name across close/re-establish; bounded (64/component) | ✅ implemented |
+| ConnectionEndpoints folder + endpoint objects (§6.6) | Created per connection; persist and are reused by name across close/re-establish; bounded (64 per functional entity) | ✅ implemented |
 | `ConnectionEndpointStatusEnum` (§10.17) | Live `Status` variable: Initial=0 … Error=4; publishers report Operational when output is active, subscribers PreOperational→Operational on first received data | ✅ implemented (exposed as Int32 — the enum DataType node is not loaded, see below) |
 | Data plane: Part 14 UADP over UDP | The `PubSub` module engine, wired dynamically per connection; identical wire on both OPC UA backends, unicast and multicast | ✅ implemented |
 | ConnectionManager role | External by design: any OPC UA client (the docs show a 20-line asyncua manager; the e2e suite is one) | ✅ implemented (external) |
@@ -47,7 +47,7 @@ manager exists here to interoperate against.
   in the subscriber's address space → Operational → close → Initial →
   same-name reuse, in **all four** backend combinations
   (UASDK↔UASDK, o6↔o6, UASDK→o6, o6→UASDK).
-- 31-probe hostile-client suite and 50-cycle churn, both backends: every
+- 34-probe hostile-client suite and 50-cycle churn, both backends: every
   malformed request refused, no endpoint-node leaks, ceiling engages,
   auto-naming survives, server stays functional.
 - 100-check JSON codec unit suite (gcc + clang, `-Werror`, C++11 floor) on
