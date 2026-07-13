@@ -21,6 +21,8 @@
 
 #include <PubSubEngine.h>
 
+#include <future>
+#include <sstream>
 #include <stdexcept>
 
 #include <ArrayTools.h>
@@ -411,20 +413,13 @@ void Engine::startIfStaged(AddressSpace::ASNodeManager* nodeManager)
     m_ioContext.reset(new boost::asio::io_context());
     buildRuntimes(configuration, nodeManager);
 
-    m_workGuard.reset(new boost::asio::executor_work_guard<boost::asio::io_context::executor_type>(
-        boost::asio::make_work_guard(*m_ioContext)));
-
     for (size_t i = 0; i < m_writerGroups.size(); i++)
         scheduleGroup(m_writerGroups[i]);
-    for (size_t i = 0; i < m_receivers.size(); i++)
-        m_receivers[i]->start();
+    for (std::map<ReceiverKey, ReceiverEntry>::iterator it = m_receivers.begin();
+         it != m_receivers.end(); ++it)
+        it->second.receiver->start();
 
-    boost::asio::io_context* io = m_ioContext.get();
-    m_thread = std::thread([io]()
-    {
-        io->run();
-    });
-    m_running = true;
+    startIoThread();
 
     size_t writerCount = 0;
     for (size_t i = 0; i < m_writerGroups.size(); i++)
@@ -435,18 +430,247 @@ void Engine::startIfStaged(AddressSpace::ASNodeManager* nodeManager)
                   << m_readers.size() << " data set reader(s))";
 }
 
+void Engine::ensureStarted()
+{
+    if (m_running)
+        return;
+    if (m_staged)
+        throw std::runtime_error(
+            "PubSub: ensureStarted called while a configuration is staged but not started");
+
+    m_ioContext.reset(new boost::asio::io_context());
+    startIoThread();
+    LOG(Log::INF) << "PubSub: engine started (no configured entities — dynamic entities only)";
+}
+
+void Engine::startIoThread()
+{
+    m_workGuard.reset(new boost::asio::executor_work_guard<boost::asio::io_context::executor_type>(
+        boost::asio::make_work_guard(*m_ioContext)));
+    boost::asio::io_context* io = m_ioContext.get();
+    m_thread = std::thread([io]()
+    {
+        io->run();
+    });
+    m_running = true;
+}
+
+void Engine::runOnIoThread(const std::function<void()>& fn)
+{
+    if (std::this_thread::get_id() == m_thread.get_id())
+    {
+        fn();
+        return;
+    }
+    std::packaged_task<void()> task(fn);
+    std::future<void> done = task.get_future();
+    boost::asio::post(*m_ioContext, std::ref(task));
+    done.get();
+}
+
+void Engine::acquireReceiver(const std::string& host, uint16_t port, bool armImmediately)
+{
+    ReceiverKey key(host, port);
+    std::map<ReceiverKey, ReceiverEntry>::iterator it = m_receivers.find(key);
+    if (it != m_receivers.end())
+    {
+        it->second.useCount++;
+        return;
+    }
+    ReceiverEntry entry;
+    entry.receiver.reset(new UdpReceiver(
+        *m_ioContext, host, port,
+        [this](const uint8_t* data, size_t size) { handleDatagram(data, size); }));
+    entry.useCount = 1;
+    if (armImmediately)
+        entry.receiver->start();
+    m_receivers[key] = entry;
+}
+
+void Engine::releaseReceiver(const std::string& host, uint16_t port)
+{
+    std::map<ReceiverKey, ReceiverEntry>::iterator it = m_receivers.find(ReceiverKey(host, port));
+    if (it == m_receivers.end())
+        return;
+    if (--it->second.useCount == 0)
+    {
+        it->second.receiver->stop();
+        m_receivers.erase(it);
+    }
+}
+
+void Engine::addDynamicWriterGroup(
+    const std::string& ownerTag,
+    PublisherIdType    publisherIdType,
+    uint64_t           publisherId,
+    const DynamicWriterGroup& group)
+{
+    if (!m_running)
+        throw std::runtime_error("PubSub: engine is not running");
+    if (group.fields.empty())
+        throw std::runtime_error("PubSub: dynamic writer group without fields");
+    if (!(group.publishingIntervalMs > 0))
+        throw std::runtime_error("PubSub: publishing interval must be positive");
+
+    runOnIoThread([&]()
+    {
+        for (size_t i = 0; i < m_writerGroups.size(); i++)
+        {
+            if (m_writerGroups[i]->config.id == group.id
+                && m_writerGroups[i]->publisherId == publisherId
+                && m_writerGroups[i]->publisherIdType == publisherIdType)
+            {
+                std::ostringstream message;
+                message << "PubSub: writer group " << group.id
+                        << " of publisher " << publisherId << " is already active";
+                throw std::runtime_error(message.str());
+            }
+        }
+
+        std::shared_ptr<WriterGroupRuntime> runtime(new WriterGroupRuntime());
+        runtime->config.id = group.id;
+        runtime->config.publishingIntervalMs = group.publishingIntervalMs;
+        runtime->publisherIdType = publisherIdType;
+        runtime->publisherId = publisherId;
+        runtime->ownerTag = ownerTag;
+
+        WriterRuntime writer;
+        writer.config.id = group.dataSetWriterId;
+        for (size_t f = 0; f < group.fields.size(); f++)
+        {
+            FieldConfig field;
+            field.address = group.fields[f].address;
+            writer.config.fields.push_back(field);
+            writer.variables.push_back(group.fields[f].variable);
+        }
+        runtime->writers.push_back(writer);
+        runtime->config.writers.push_back(writer.config);
+
+        /* The transmitter socket is the step that can fail (bad address);
+         * it is created before the runtime is committed to the containers. */
+        runtime->transmitter.reset(new UdpTransmitter(
+            *m_ioContext, group.host, group.port, group.ttl, group.loopback));
+        runtime->timer.reset(new boost::asio::steady_timer(*m_ioContext));
+
+        m_writerGroups.push_back(runtime);
+        scheduleGroup(runtime);
+    });
+
+    LOG(Log::INF) << "PubSub: dynamic writer group " << group.id << " (writer "
+                  << group.dataSetWriterId << ", " << group.fields.size() << " field(s), every "
+                  << group.publishingIntervalMs << " ms) -> " << group.host << ":" << group.port
+                  << " [" << ownerTag << "]";
+}
+
+void Engine::addDynamicReader(const std::string& ownerTag, const DynamicReader& reader)
+{
+    if (!m_running)
+        throw std::runtime_error("PubSub: engine is not running");
+    if (reader.targets.empty())
+        throw std::runtime_error("PubSub: dynamic reader without targets");
+
+    runOnIoThread([&]()
+    {
+        ReaderKey key(reader.publisherId, reader.writerGroupId, reader.dataSetWriterId);
+        if (m_readers.count(key))
+        {
+            std::ostringstream message;
+            message << "PubSub: a reader for publisher " << reader.publisherId
+                    << ", writer group " << reader.writerGroupId
+                    << ", data set writer " << reader.dataSetWriterId << " is already active";
+            throw std::runtime_error(message.str());
+        }
+
+        std::shared_ptr<ReaderRuntime> runtime(new ReaderRuntime());
+        runtime->config.publisherIdType = reader.publisherIdType;
+        runtime->config.publisherId = reader.publisherId;
+        runtime->config.writerGroupId = reader.writerGroupId;
+        runtime->config.dataSetWriterId = reader.dataSetWriterId;
+        runtime->ownerTag = ownerTag;
+        runtime->host = reader.host;
+        runtime->port = reader.port;
+        runtime->onFirstData = reader.onFirstData;
+        for (size_t f = 0; f < reader.targets.size(); f++)
+        {
+            FieldConfig field;
+            field.address = reader.targets[f].address;
+            runtime->config.targets.push_back(field);
+            runtime->targets.push_back(reader.targets[f].variable);
+        }
+
+        /* The receiver socket bind is the step that can fail; the reader is
+         * only committed after the receiver is up. */
+        acquireReceiver(reader.host, reader.port, true);
+        m_readers[key] = runtime;
+    });
+
+    LOG(Log::INF) << "PubSub: dynamic reader on publisher " << reader.publisherId
+                  << "/group " << reader.writerGroupId << "/writer " << reader.dataSetWriterId
+                  << " (" << reader.targets.size() << " target(s)) <- "
+                  << reader.host << ":" << reader.port << " [" << ownerTag << "]";
+}
+
+void Engine::removeDynamic(const std::string& ownerTag)
+{
+    if (!m_running)
+        return;
+
+    size_t removedGroups = 0;
+    size_t removedReaders = 0;
+    runOnIoThread([&]()
+    {
+        for (std::vector< std::shared_ptr<WriterGroupRuntime> >::iterator it = m_writerGroups.begin();
+             it != m_writerGroups.end();)
+        {
+            if ((*it)->ownerTag == ownerTag)
+            {
+                (*it)->timer->cancel();
+                it = m_writerGroups.erase(it);
+                removedGroups++;
+            }
+            else
+                ++it;
+        }
+        for (std::map<ReaderKey, std::shared_ptr<ReaderRuntime> >::iterator it = m_readers.begin();
+             it != m_readers.end();)
+        {
+            if (it->second->ownerTag == ownerTag)
+            {
+                releaseReceiver(it->second->host, it->second->port);
+                std::map<ReaderKey, std::shared_ptr<ReaderRuntime> >::iterator doomed = it++;
+                m_readers.erase(doomed);
+                removedReaders++;
+            }
+            else
+                ++it;
+        }
+    });
+
+    if (removedGroups || removedReaders)
+        LOG(Log::INF) << "PubSub: removed " << removedGroups << " dynamic writer group(s), "
+                      << removedReaders << " dynamic reader(s) [" << ownerTag << "]";
+    else
+        LOG(Log::DBG) << "PubSub: removeDynamic found nothing under [" << ownerTag << "]";
+}
+
 void Engine::shutdown()
 {
     if (!m_running)
         return;
 
-    for (size_t i = 0; i < m_writerGroups.size(); i++)
+    /* Timers and sockets live on the io thread; cancel/close them there
+     * rather than racing its in-flight handlers from this thread. */
+    runOnIoThread([this]()
     {
-        if (m_writerGroups[i]->timer)
-            m_writerGroups[i]->timer->cancel();
-    }
-    for (size_t i = 0; i < m_receivers.size(); i++)
-        m_receivers[i]->stop();
+        for (size_t i = 0; i < m_writerGroups.size(); i++)
+        {
+            if (m_writerGroups[i]->timer)
+                m_writerGroups[i]->timer->cancel();
+        }
+        for (std::map<ReceiverKey, ReceiverEntry>::iterator it = m_receivers.begin();
+             it != m_receivers.end(); ++it)
+            it->second.receiver->stop();
+    });
 
     m_workGuard.reset();
     m_ioContext->stop();
@@ -508,16 +732,16 @@ void Engine::buildRuntimes(const Configuration& configuration, AddressSpace::ASN
             {
                 std::shared_ptr<ReaderRuntime> reader(new ReaderRuntime());
                 reader->config = connection.readers[r];
+                reader->host = connection.host;
+                reader->port = connection.port;
                 for (size_t f = 0; f < reader->config.targets.size(); f++)
                     reader->targets.push_back(resolveVariable(nodeManager, reader->config.targets[f].address));
                 ReaderKey key(reader->config.publisherId, reader->config.writerGroupId, reader->config.dataSetWriterId);
                 if (m_readers.count(key))
                     throw std::runtime_error("PubSub: duplicate DataSetReader (publisherId/writerGroupId/dataSetWriterId)");
                 m_readers[key] = reader;
+                acquireReceiver(connection.host, connection.port, false);
             }
-            m_receivers.push_back(std::shared_ptr<UdpReceiver>(new UdpReceiver(
-                *m_ioContext, connection.host, connection.port,
-                [this](const uint8_t* data, size_t size) { handleDatagram(data, size); })));
         }
     }
 }
@@ -619,6 +843,11 @@ void Engine::handleDatagram(const uint8_t* data, size_t size)
             if (!status.isGood())
                 LOG(Log::WRN) << "PubSub: writing received value to '"
                               << reader.config.targets[f].address << "' failed";
+        }
+        if (count > 0 && !reader.firstDataSignalled && reader.onFirstData)
+        {
+            if (reader.onFirstData())
+                reader.firstDataSignalled = true;
         }
     }
 }

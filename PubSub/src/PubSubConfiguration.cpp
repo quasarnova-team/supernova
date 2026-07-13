@@ -35,6 +35,30 @@ PublisherIdType parsePublisherIdType(const std::string& text)
     throw std::runtime_error("PubSub configuration: unknown publisherIdType '" + text + "' (expected Byte, UInt16, UInt32 or UInt64)");
 }
 
+const char* publisherIdTypeName(PublisherIdType type)
+{
+    switch (type)
+    {
+        case PublisherIdByte:   return "Byte";
+        case PublisherIdUInt16: return "UInt16";
+        case PublisherIdUInt32: return "UInt32";
+        case PublisherIdUInt64: return "UInt64";
+    }
+    return "UInt16";
+}
+
+uint64_t publisherIdMaximum(PublisherIdType type)
+{
+    switch (type)
+    {
+        case PublisherIdByte:   return 0xFFull;
+        case PublisherIdUInt16: return 0xFFFFull;
+        case PublisherIdUInt32: return 0xFFFFFFFFull;
+        case PublisherIdUInt64: return 0xFFFFFFFFFFFFFFFFull;
+    }
+    return 0xFFFFull;
+}
+
 void parseNetworkAddress(const std::string& address, std::string& host, uint16_t& port)
 {
     const std::string scheme = "opc.udp://";

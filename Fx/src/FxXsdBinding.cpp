@@ -52,18 +52,6 @@ std::string leafOf(const std::string& address)
     return dot == std::string::npos ? address : address.substr(dot + 1);
 }
 
-uint64_t publisherIdCeiling(PubSub::PublisherIdType type)
-{
-    switch (type)
-    {
-        case PubSub::PublisherIdByte:   return 0xFFull;
-        case PubSub::PublisherIdUInt16: return 0xFFFFull;
-        case PubSub::PublisherIdUInt32: return 0xFFFFFFFFull;
-        case PubSub::PublisherIdUInt64: return 0xFFFFFFFFFFFFFFFFull;
-    }
-    return 0xFFFFull;
-}
-
 template <typename XsdField>
 DatasetField bindField(
     const XsdField&        xsdField,
@@ -105,7 +93,7 @@ Configuration configurationFromXsd(const ::Configuration::Fx& xsd)
 
     configuration.publisherIdType = PubSub::parsePublisherIdType(xsd.publisherIdType());
     configuration.publisherId = xsd.publisherId();
-    if (configuration.publisherId > publisherIdCeiling(configuration.publisherIdType))
+    if (configuration.publisherId > PubSub::publisherIdMaximum(configuration.publisherIdType))
     {
         std::ostringstream message;
         message << "publisherId " << configuration.publisherId

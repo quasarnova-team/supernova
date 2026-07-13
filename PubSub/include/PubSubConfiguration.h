@@ -84,6 +84,11 @@ void parseNetworkAddress(const std::string& address, std::string& host, uint16_t
 
 PublisherIdType parsePublisherIdType(const std::string& text);
 
+const char* publisherIdTypeName(PublisherIdType type);
+
+/* Largest publisher id the given wire type can carry. */
+uint64_t publisherIdMaximum(PublisherIdType type);
+
 }
 
 #endif /* PUBSUB_INCLUDE_PUBSUBCONFIGURATION_H_ */
