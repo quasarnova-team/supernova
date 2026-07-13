@@ -565,13 +565,24 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
         return OpcUa_Bad;
     }
     LOG(Log::DBG) << __FUNCTION__ << " Environment vars: " << std::endl << getProcessEnvironmentVariables();
-    validateDeviceTree();
-    Meta::initializeMeta(nm);
-    CalculatedVariables::Engine::printInstantiationStatistics();
-    CalculatedVariables::Engine::optimize();
-    CalculatedVariables::Engine::setupSynchronization();
-    CalculatedVariables::Engine::printInstantiationStatistics();
-    initialize();
+    try
+    {
+        validateDeviceTree();
+        Meta::initializeMeta(nm);
+        CalculatedVariables::Engine::printInstantiationStatistics();
+        CalculatedVariables::Engine::optimize();
+        CalculatedVariables::Engine::setupSynchronization();
+        CalculatedVariables::Engine::printInstantiationStatistics();
+        initialize();
+    }
+    catch (const std::exception& e)
+    {
+        /* Anything thrown from this handler would otherwise unwind into
+         * backend SDK code — surface it and abort the startup instead. */
+        LOG(Log::ERR) << "Post-configuration initialization failed: " << e.what();
+        m_configurationHandlerFailed = true;
+        return OpcUa_Bad;
+    }
     try
     {
         PubSub::Engine::instance().startIfStaged(nm);
