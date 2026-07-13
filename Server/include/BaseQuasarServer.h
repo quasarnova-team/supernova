@@ -61,6 +61,11 @@ protected:
 
     //Reference to the Node manager
     AddressSpace::ASNodeManager* m_nodeManager;
+    /* Set when configurationInitializerHandler fails after the address space
+     * came up (a PubSub/Fx engine refused to start). The open62541 backend
+     * does not propagate the handler's Bad status through start(), so
+     * serverRun checks this flag and aborts instead of serving half-alive. */
+    bool m_configurationHandlerFailed;
     //Main loop of the application logic.
     virtual void mainLoop();
     //Method for initialising Custom Modules, to be overwritten by the final user.

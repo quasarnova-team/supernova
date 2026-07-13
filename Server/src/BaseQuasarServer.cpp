@@ -74,7 +74,8 @@ using namespace boost::program_options;
 
 BaseQuasarServer::BaseQuasarServer() :
         m_pServer(0),
-        m_nodeManager(0)
+        m_nodeManager(0),
+        m_configurationHandlerFailed(false)
 {
 }
 
@@ -174,7 +175,14 @@ int BaseQuasarServer::serverRun(
             return startServerReturn;
         }
 
-        mainLoop();
+        if (m_configurationHandlerFailed)
+        {
+            LOG(Log::ERR) << "Server startup aborted: configuration initialization failed "
+                          << "(the exact problem is logged above).";
+            serverReturnCode = 1;
+        }
+        else
+            mainLoop();
     }
     catch (const std::exception &e)
     {
@@ -552,6 +560,7 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     catch (const std::exception& e)
     {
         LOG(Log::ERR) << "PubSub initialization failed: " << e.what();
+        m_configurationHandlerFailed = true;
         return OpcUa_Bad;
     }
     try
@@ -561,12 +570,11 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     catch (const std::exception& e)
     {
         LOG(Log::ERR) << "Fx initialization failed: " << e.what();
-        /* The PubSub engine may already be running its io thread. Returning
-         * Bad from this after-startup handler aborts the server on a path
-         * that never reaches serverRun's teardown, which would leave a
-         * joinable io thread behind — stop both engines before failing. */
+        /* The PubSub engine may already be running its io thread; stop both
+         * engines here so no joinable thread outlives the aborted startup. */
         Fx::Engine::instance().shutdown();
         PubSub::Engine::instance().shutdown();
+        m_configurationHandlerFailed = true;
         return OpcUa_Bad;
     }
     return OpcUa_Good;
