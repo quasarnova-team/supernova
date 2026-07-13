@@ -1,0 +1,9 @@
+OPC UA FX smoke: a design with plain cache variables plus a config.xml carrying
+an <Fx> section (one automation component, one functional entity offering an
+OutputDataset — with a defaulted and an explicit field name — and an
+InputDataset). Passing means the generated Configuration.xsd accepts the Fx
+section, the generated Configurator stages it, and the Fx engine comes online:
+the automation component's information model (FunctionalEntities, dataset
+views, ConnectionEndpoints, the connection methods) is built in the address
+space and every dataset field resolves to its cache variable — the server then
+survives a uasak_dump client session.

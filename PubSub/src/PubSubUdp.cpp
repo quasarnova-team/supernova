@@ -64,12 +64,22 @@ UdpReceiver::UdpReceiver(
     m_buffer(65536),
     m_handler(handler)
 {
-    address groupAddress = address::from_string(host);
+    address listenAddress = address::from_string(host);
     m_socket.open(udp::v4());
     m_socket.set_option(udp::socket::reuse_address(true));
-    m_socket.bind(udp::endpoint(udp::v4(), port));
-    if (groupAddress.is_multicast())
-        m_socket.set_option(boost::asio::ip::multicast::join_group(groupAddress));
+    if (listenAddress.is_multicast())
+    {
+        m_socket.bind(udp::endpoint(udp::v4(), port));
+        m_socket.set_option(boost::asio::ip::multicast::join_group(listenAddress));
+    }
+    else
+    {
+        /* Unicast: bind the given address itself (0.0.0.0 binds all
+         * interfaces). An address that is not local fails right here with a
+         * system error — a mistyped listen address is refused loudly instead
+         * of silently listening on everything. */
+        m_socket.bind(udp::endpoint(listenAddress, port));
+    }
 }
 
 void UdpReceiver::start()
@@ -85,12 +95,17 @@ void UdpReceiver::stop()
 
 void UdpReceiver::armReceive()
 {
+    /* self keeps the receiver alive until the completion runs: a completion
+     * may already be queued when stop() closes the socket and the owner
+     * drops its reference. After close, is_open() is false and the handler
+     * neither delivers nor re-arms. */
+    std::shared_ptr<UdpReceiver> self = shared_from_this();
     m_socket.async_receive_from(
         boost::asio::buffer(m_buffer),
         m_sender,
-        [this](const boost::system::error_code& error, size_t bytes)
+        [self](const boost::system::error_code& error, size_t bytes)
         {
-            if (error == boost::asio::error::operation_aborted)
+            if (error == boost::asio::error::operation_aborted || !self->m_socket.is_open())
                 return;
             if (error)
             {
@@ -98,9 +113,9 @@ void UdpReceiver::armReceive()
             }
             else if (bytes > 0)
             {
-                m_handler(&m_buffer[0], bytes);
+                self->m_handler(&self->m_buffer[0], bytes);
             }
-            armReceive();
+            self->armReceive();
         });
 }
 

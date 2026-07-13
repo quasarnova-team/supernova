@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -54,7 +55,12 @@ private:
     boost::asio::ip::udp::endpoint m_destination;
 };
 
-class UdpReceiver
+/* Receivers can be destroyed at runtime (dynamic reconfiguration): a receive
+ * completion may already be queued when stop() closes the socket, so the
+ * completion handler keeps the receiver alive through shared_from_this and
+ * bails out once the socket is closed. Always own a UdpReceiver through a
+ * shared_ptr. */
+class UdpReceiver: public std::enable_shared_from_this<UdpReceiver>
 {
 public:
     typedef std::function<void (const uint8_t* data, size_t size)> DatagramHandler;

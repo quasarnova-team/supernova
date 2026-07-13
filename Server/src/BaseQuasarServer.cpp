@@ -64,6 +64,7 @@
 #include <MetaBuildInfo.h>
 #include <CalculatedVariablesEngine.h>
 #include <PubSubEngine.h>
+#include <FxEngine.h>
 #include <Utils.h>
 
 #include <OpcuaToolkitInfo.hpp>
@@ -73,7 +74,8 @@ using namespace boost::program_options;
 
 BaseQuasarServer::BaseQuasarServer() :
         m_pServer(0),
-        m_nodeManager(0)
+        m_nodeManager(0),
+        m_configurationHandlerFailed(false)
 {
 }
 
@@ -173,7 +175,18 @@ int BaseQuasarServer::serverRun(
             return startServerReturn;
         }
 
-        mainLoop();
+        if (m_configurationHandlerFailed)
+        {
+            LOG(Log::ERR) << "Server startup aborted: configuration initialization failed "
+                          << "(the exact problem is logged above).";
+            /* What the SIGINT handler would do: the open62541 backend's run
+             * thread loops on this flag and its stop() only joins — without
+             * this the aborted server would hang in stop() until a signal. */
+            ShutDown();
+            serverReturnCode = 1;
+        }
+        else
+            mainLoop();
     }
     catch (const std::exception &e)
     {
@@ -182,6 +195,10 @@ int BaseQuasarServer::serverRun(
             " caught in BaseQuasarServer::serverRun:  [" << Quasar::TermColors::ForeRed() << e.what() << Quasar::TermColors::StyleReset() << "]";
         serverReturnCode = 1;
     }
+    /* Order is load-bearing: Fx teardown removes its dynamic Pub/Sub entities
+     * by posting work onto the PubSub engine's io thread, so the Fx engine
+     * must be fully stopped before the PubSub engine stops that thread. */
+    Fx::Engine::instance().shutdown();
     PubSub::Engine::instance().shutdown();
     AddressSpace::SourceVariables_destroySourceVariablesThreadPool ();
     shutdown();  // this is typically overridden by the developer
@@ -530,16 +547,42 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
         AddressSpace::ASNodeManager *nm)
 {
     LOG(Log::INF) << "Configuration Initializer Handler";
-    if (!overridableConfigure(configFileName, nm))
-        return OpcUa_Bad; // error is already printed in configure()
+    try
+    {
+        if (!overridableConfigure(configFileName, nm))
+        {
+            m_configurationHandlerFailed = true;
+            return OpcUa_Bad; // error is already printed in configure()
+        }
+    }
+    catch (const std::exception& e)
+    {
+        /* configure() can throw beyond its own catch clauses (e.g. an engine
+         * staging call refusing an invalid section) — surface it here rather
+         * than letting it unwind into backend SDK code. */
+        LOG(Log::ERR) << "Configuration failed: " << e.what();
+        m_configurationHandlerFailed = true;
+        return OpcUa_Bad;
+    }
     LOG(Log::DBG) << __FUNCTION__ << " Environment vars: " << std::endl << getProcessEnvironmentVariables();
-    validateDeviceTree();
-    Meta::initializeMeta(nm);
-    CalculatedVariables::Engine::printInstantiationStatistics();
-    CalculatedVariables::Engine::optimize();
-    CalculatedVariables::Engine::setupSynchronization();
-    CalculatedVariables::Engine::printInstantiationStatistics();
-    initialize();
+    try
+    {
+        validateDeviceTree();
+        Meta::initializeMeta(nm);
+        CalculatedVariables::Engine::printInstantiationStatistics();
+        CalculatedVariables::Engine::optimize();
+        CalculatedVariables::Engine::setupSynchronization();
+        CalculatedVariables::Engine::printInstantiationStatistics();
+        initialize();
+    }
+    catch (const std::exception& e)
+    {
+        /* Anything thrown from this handler would otherwise unwind into
+         * backend SDK code — surface it and abort the startup instead. */
+        LOG(Log::ERR) << "Post-configuration initialization failed: " << e.what();
+        m_configurationHandlerFailed = true;
+        return OpcUa_Bad;
+    }
     try
     {
         PubSub::Engine::instance().startIfStaged(nm);
@@ -547,6 +590,21 @@ UaStatus BaseQuasarServer::configurationInitializerHandler(const std::string& co
     catch (const std::exception& e)
     {
         LOG(Log::ERR) << "PubSub initialization failed: " << e.what();
+        m_configurationHandlerFailed = true;
+        return OpcUa_Bad;
+    }
+    try
+    {
+        Fx::Engine::instance().startIfStaged(nm);
+    }
+    catch (const std::exception& e)
+    {
+        LOG(Log::ERR) << "Fx initialization failed: " << e.what();
+        /* The PubSub engine may already be running its io thread; stop both
+         * engines here so no joinable thread outlives the aborted startup. */
+        Fx::Engine::instance().shutdown();
+        PubSub::Engine::instance().shutdown();
+        m_configurationHandlerFailed = true;
         return OpcUa_Bad;
     }
     return OpcUa_Good;

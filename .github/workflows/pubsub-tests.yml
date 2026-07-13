@@ -1,9 +1,9 @@
-name: PubSub wire codec tests
+name: Wire and codec unit tests
 
-# The PubSub wire codec is pure C++ (no OPC UA backend, no framework deps),
-# so its unit suite runs on a stock runner in seconds. It compiles under the
-# framework's C++11 floor with warnings-as-errors, matching the strictest
-# in-tree toolchain expectations.
+# The PubSub wire codec and the Fx JSON argument codec are pure C++ (no OPC UA
+# backend, no framework deps), so their unit suites run on a stock runner in
+# seconds. They compile under the framework's C++11 floor with
+# warnings-as-errors, matching the strictest in-tree toolchain expectations.
 
 on:
   push:
@@ -29,3 +29,35 @@ jobs:
           clang++ -std=c++11 -Wall -Wextra -Werror -IPubSub/include \
               PubSub/src/PubSubWire.cpp PubSub/test/test_wire.cpp -o test_wire_clang
           ./test_wire_clang
+
+  fx-json-codec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run (g++, C++11, -Werror)
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror -IFx/include \
+              Fx/src/FxJson.cpp Fx/test/test_json.cpp -o test_json
+          ./test_json
+      - name: Build and run (clang++, C++11, -Werror)
+        run: |
+          clang++ -std=c++11 -Wall -Wextra -Werror -IFx/include \
+              Fx/src/FxJson.cpp Fx/test/test_json.cpp -o test_json_clang
+          ./test_json_clang
+
+  fx-configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run (g++, C++11, -Werror)
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror -IFx/include -IPubSub/include \
+              Fx/src/FxConfiguration.cpp PubSub/src/PubSubConfiguration.cpp \
+              Fx/test/test_configuration.cpp -o test_configuration
+          ./test_configuration
+      - name: Build and run (clang++, C++11, -Werror)
+        run: |
+          clang++ -std=c++11 -Wall -Wextra -Werror -IFx/include -IPubSub/include \
+              Fx/src/FxConfiguration.cpp PubSub/src/PubSubConfiguration.cpp \
+              Fx/test/test_configuration.cpp -o test_configuration_clang
+          ./test_configuration_clang
