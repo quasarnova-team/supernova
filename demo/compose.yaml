@@ -8,12 +8,12 @@ services:
 
   kilonova:
     image: ghcr.io/quasarnova-team/quasarnova-demo:python
-    command: kilonova run --design /demo/Design.xml --config /demo/config.xml --endpoint opc.tcp://0.0.0.0:4841
+    command: kilonova run --design /demo/Design.xml --config /demo/config.xml --endpoint opc.tcp://0.0.0.0:4842
     volumes:
       - ./Design.xml:/demo/Design.xml:ro
       - ./config.xml:/demo/config.xml:ro
     ports:
-      - "4842:4841"
+      - "4842:4842"
 
   registry:
     image: ghcr.io/quasarnova-team/quasarnova-demo:python
