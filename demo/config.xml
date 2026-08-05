@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration xmlns="http://cern.ch/quasar/Configuration" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://cern.ch/quasar/Configuration ../Configuration/Configuration.xsd ">
+	<PubSub publisherId="77" publisherIdType="UInt16">
+		<Connection address="opc.udp://239.0.0.11:4843" ttl="1" loopback="true">
+			<WriterGroup id="100" publishingIntervalMs="100">
+				<DataSetWriter id="1">
+					<Field source="PS1.counter"/>
+					<Field source="PS1.temperature"/>
+					<Field source="PS1.label"/>
+				</DataSetWriter>
+				<DataSetWriter id="2">
+					<Field source="PS1.counter"/>
+				</DataSetWriter>
+			</WriterGroup>
+			<DataSetReader publisherId="77" publisherIdType="UInt16" writerGroupId="100" dataSetWriterId="2">
+				<Field target="PS1.mirror"/>
+			</DataSetReader>
+		</Connection>
+	</PubSub>
+	<PubSubTester name="PS1"/>
+</configuration>

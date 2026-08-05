@@ -1,0 +1,7 @@
+FROM python:3.12-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && pip install --no-cache-dir \
+      "kilonova @ git+https://github.com/quasarnova-team/kilonova@5cd2ae52cf4ac45f4e515f7c7c7ce4432323ecd0" \
+      "hypernova @ git+https://github.com/quasarnova-team/hypernova@f86ecf9293ff" \
+ && apt-get purge -y git && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*

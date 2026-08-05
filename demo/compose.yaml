@@ -1,0 +1,48 @@
+name: quasarnova-demo
+
+services:
+  supernova:
+    image: ghcr.io/quasarnova-team/quasarnova-demo:supernova
+    ports:
+      - "4841:4841"
+
+  kilonova:
+    image: ghcr.io/quasarnova-team/quasarnova-demo:python
+    command: kilonova run --design /demo/Design.xml --config /demo/config.xml --endpoint opc.tcp://0.0.0.0:4841
+    volumes:
+      - ./Design.xml:/demo/Design.xml:ro
+      - ./config.xml:/demo/config.xml:ro
+    ports:
+      - "4842:4841"
+
+  registry:
+    image: ghcr.io/quasarnova-team/quasarnova-demo:python
+    command: hypernova registry --store ""
+    ports:
+      - "4850:4850"
+
+  seed:
+    image: ghcr.io/quasarnova-team/quasarnova-demo:python
+    depends_on:
+      - registry
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        for i in $$(seq 1 30); do
+          hypernova register demo/ps1/env \
+            --address opc.udp://239.0.0.11:4843 \
+            --publisher-id 77 --writer-group-id 100 --dataset-writer-id 1 \
+            --field counter=INT32 --field temperature=DOUBLE --field label=STRING \
+            --replace --registry http://registry:4850 \
+            --description "supernova publisher (C++ engine), PS1 environment" \
+          && exit 0
+          sleep 1
+        done
+        exit 1
+
+  subscriber:
+    image: ghcr.io/quasarnova-team/quasarnova-demo:python
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    command: hypernova sub demo/ps1/env --registry http://registry:4850 --timeout 60

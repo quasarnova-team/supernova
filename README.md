@@ -77,6 +77,21 @@ The `--recursive` flag is required (LogIt is a git submodule). The server binds
 documentation lives in-repo under `Documentation/`. Coming from stock quasar? The
 divergence is additive and the upgrade is quasar's own — see [MIGRATION.md](MIGRATION.md).
 
+The 60-second demo
+------------------
+
+One 16-line Design file; the whole family serves it:
+
+```bash
+cd demo && docker compose up
+```
+
+supernova (C++) serves and publishes it over OPC UA Pub/Sub, kilonova (Python)
+serves the identical file, hypernova names the stream and prints live values in
+your terminal — every container a shipped product, no demo-only code. Details in
+[demo/README.md](demo/README.md). CI runs the same compose on every demo change
+and asserts live values within 60 seconds (the `family-demo` workflow).
+
 Tested platforms
 ----------------
 
