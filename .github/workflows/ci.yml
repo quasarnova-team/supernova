@@ -314,6 +314,27 @@ jobs:
       - name: Boot the server (smoke assertion)
         run: ./.CI/travis/server_fixture.py
 
+  # ── the README quick start, executed (adoption gate) ─────────────────────
+  # .CI/test_readme_quickstart.py extracts the marked block from README.md and
+  # runs it in this clean container: the documented path from fresh Ubuntu to a
+  # running server is CI-enforced, with the ten-minute budget as the gate.
+  readme_quickstart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: ubuntu:24.04
+    steps:
+      - run: |
+          printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/99-ci-retries
+          apt-config dump Acquire::Retries
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git python3 > /dev/null
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: python3 .CI/test_readme_quickstart.py
+
   # ── framework invariants (hermetic: no backend, no compiler) ─────────────
   framework_invariants:
     runs-on: ubuntu-latest

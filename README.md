@@ -55,16 +55,45 @@ backend combinations ([spec-alignment matrix](FX-PARITY.md),
 Quick start
 -----------
 
+Fresh Ubuntu (22.04/24.04) to a running OPC UA server on the open-source stack.
+CI executes this block verbatim in a clean `ubuntu:24.04` container on every push
+(`readme_quickstart` in ci.yml, ten-minute budget) — if the block rots, the build reds.
+
+<!-- quickstart:begin -->
 ```bash
+sudo apt-get update
+sudo apt-get install -y cmake g++ git astyle python3 python3-jinja2 python3-lxml python3-colorama python3-pygit2 libboost-all-dev libssl-dev libxml2-utils libxml2-dev libxerces-c-dev xsdcxx
 git clone --recursive https://github.com/quasarnova-team/supernova
 cd supernova
-./quasar.py set_build_config <path/to/config.cmake>
-./quasar.py build
+./quasar.py enable_module open62541-compat v1.5.8
+./quasar.py set_build_config open62541_config.cmake
+./quasar.py build Release
+cd build/bin && ./OpcUaServer
 ```
+<!-- quickstart:end -->
 
-The `--recursive` flag is required (LogIt is a git submodule). Full build documentation
-lives in-repo under `Documentation/`. Coming from stock quasar? The divergence is
-additive and the upgrade is quasar's own — see [MIGRATION.md](MIGRATION.md).
+The `--recursive` flag is required (LogIt is a git submodule). The server binds
+`opc.tcp://localhost:4841` with the demo Design; stop it with Ctrl-C. Full build
+documentation lives in-repo under `Documentation/`. Coming from stock quasar? The
+divergence is additive and the upgrade is quasar's own — see [MIGRATION.md](MIGRATION.md).
+
+Tested platforms
+----------------
+
+Every cell below runs in CI from `.CI/test_cases/manifest.json` — the same case
+set on every platform, by construction.
+
+| Platform | Compiler | Backend | Cadence |
+|----------|----------|---------|---------|
+| Ubuntu 24.04 (clean container) | distro gcc | open62541-compat | quick-start gate, every push |
+| Ubuntu 20.04 / CMake 3.16 | distro gcc | open62541-compat | configure floor, every push |
+| AlmaLinux 9 / 10 | distro gcc | open62541-compat | full case oracle, every push |
+| AlmaLinux 10 | clang | open62541-compat | nightly |
+| AlmaLinux 9 / 10, arm64 | distro gcc | open62541-compat | nightly |
+| Windows Server 2025 | MSVC (VS 2022) | open62541-compat + UASDK 1.8.9 / 2.0.3 | full case oracle, every push (nightly adds UASDK 1.6.5) |
+
+CMake is exercised at both ends: the 3.16 floor on every push, the unpinned
+latest as a nightly frontier probe.
 
 Heritage and license
 --------------------
