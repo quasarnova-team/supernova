@@ -119,6 +119,7 @@ jobs:
           # Runs here too (not only in ci.yml): the Linux lane is disabled until
           # provisioned, and the supply-chain pins must be enforced in an ACTIVE lane.
           python .CI/test_ci_supply_chain.py;       chk "test_ci_supply_chain"
+          python .CI/test_create_project.py;        chk "test_create_project"
         shell: pwsh
 
   framework-cases-windows:

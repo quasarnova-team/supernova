@@ -13,7 +13,7 @@
             },
             "CMakeLists.txt": {
                 "install": "overwrite",
-                "md5": "b5cb2de5c010197dbc2195838c22ebbe",
+                "md5": "dff607becc16015a77f64cc02e0d66da",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -100,7 +100,7 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "ASSourceVariable.h": {
-                "md5": "e40fd852b66d3911435f6f109fc21ace",
+                "md5": "daaf703eddc45b6c9b1b2016460f62f7",
                 "use_defaults": "file_defaults_of_directory"
             },
             "ASSourceVariableIoManager.h": {
@@ -166,7 +166,7 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToClassBody.jinja": {
-                "md5": "a72769ca3dd6c4b7d24e03d94b91aa6f",
+                "md5": "aa1e97bdbf3f668dd7c73543ecac84bb",
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToClassHeader.jinja": {
@@ -350,7 +350,7 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "QuasarThreadPool.cpp": {
-                "md5": "792a18f69b14a361fc41584fa746e3a7",
+                "md5": "fcf043ca2cc48b9b2ed7c61035a57434",
                 "use_defaults": "file_defaults_of_directory"
             }
         },
@@ -371,7 +371,7 @@
         "files": {
             "CMakeLists.txt": {
                 "install": "overwrite",
-                "md5": "acd50ad4320e87ee6e8c0770e3936b11",
+                "md5": "5c5764b2fd701b34a50d889a0142490a",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -424,11 +424,11 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToConfigurationXSD.jinja": {
-                "md5": "6e6372a9b7e90cbad890069d473c8067",
+                "md5": "d25064c286c8e43439952025ec6d2af3",
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToConfigurator.jinja": {
-                "md5": "dd26747457e8dbc5a218c9df4e16cc6b",
+                "md5": "fd408cb775c32ebe974c5c3cee278dab",
                 "use_defaults": "file_defaults_of_directory"
             }
         },
@@ -550,7 +550,7 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToDeviceBaseHeader.jinja": {
-                "md5": "24d989137a88945bd61696d3458a6cc2",
+                "md5": "46fecb3594140db8b926dd5060035d17",
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToDeviceBody.jinja": {
@@ -656,7 +656,7 @@
             },
             "automated_build.py": {
                 "install": "overwrite",
-                "md5": "68b177b69eaabcc0e3c0c799f1d81c62",
+                "md5": "b907e28d595370c36dff3858e9130cf2",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -715,7 +715,7 @@
             },
             "generateCmake.py": {
                 "install": "overwrite",
-                "md5": "fe19ae401b091decc5685a564cad2246",
+                "md5": "07b3fb6d0ef850267d9499ce2dde9e9e",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -806,11 +806,76 @@
         },
         "install": "create"
     },
+    "Fx": {
+        "files": {
+            "CMakeLists.txt": {
+                "install": "overwrite",
+                "md5": "e9eb5cc3ef3d76ef61192120a7f1a39c",
+                "must_be_versioned": true,
+                "must_exist": true
+            }
+        },
+        "install": "create"
+    },
+    "Fx/include": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "FxConfiguration.h": {
+                "md5": "b308e3b963d5b93dbaff6b7c0b6957cb",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxEngine.h": {
+                "md5": "8990dd49e305b965d2de1eb662e4ad8d",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxJson.h": {
+                "md5": "e45a5ea2b4533ed34c6696c49fae2f04",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxXsdBinding.h": {
+                "md5": "c9b1bd3147a5929d63e864848263f400",
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
+    "Fx/src": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "FxConfiguration.cpp": {
+                "md5": "83254e766d633b229f87a286d340f305",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxEngine.cpp": {
+                "md5": "48a1593046b6f1bb4fed19bb4c568461",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxJson.cpp": {
+                "md5": "ca52b083fa077590f1362a9d766f89fb",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxXsdBinding.cpp": {
+                "md5": "93ea380e72930fc60e10a023051f0c18",
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
     "LogIt": {
         "files": {
             "CMakeLists.txt": {
                 "install": "overwrite",
-                "md5": "448296a8d229e96d95ae1833afa5a62a",
+                "md5": "822af6a6294090f8f7273bf11c15c310",
                 "must_be_versioned": true,
                 "must_exist": true
             }
@@ -854,7 +919,7 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "LogSinkInterface.h": {
-                "md5": "aacede0bc224c07148bdaf57097312da",
+                "md5": "c4efdaff71ea95ee7215fcd1f8f89415",
                 "use_defaults": "file_defaults_of_directory"
             },
             "LogSinks.h": {
@@ -862,11 +927,11 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "StdOutLog.h": {
-                "md5": "80f0968b8d1eee8d807c3a84b17b6ddf",
+                "md5": "7e701eb98013e7ac9a59413aa207e67b",
                 "use_defaults": "file_defaults_of_directory"
             },
             "UaTraceSink.h": {
-                "md5": "4b5ef9ae295b67b518d979b4ef05ac05",
+                "md5": "06884e56f9c5db6e890f88dcaf8189ff",
                 "use_defaults": "file_defaults_of_directory"
             },
             "WindowsDebuggerSink.h": {
@@ -1138,7 +1203,7 @@
                 "deprecated": true
             },
             "DSourceVariableThreadPool.cpp": {
-                "md5": "eb4ce0481608507df6ccf89e4f5437ef",
+                "md5": "03ecd57f71b8858d29d0e77a79a29115",
                 "use_defaults": "file_defaults_of_directory"
             },
             "DStandardMetaData.cpp": {
@@ -1157,6 +1222,79 @@
             },
             "metaBackwardsCompatibilityUtils.cpp": {
                 "md5": "acd2766456aca23ab5f1102806475c87",
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
+    "PubSub": {
+        "files": {
+            "CMakeLists.txt": {
+                "install": "overwrite",
+                "md5": "278ffa96ca0993672a74dc577ea1fb74",
+                "must_be_versioned": true,
+                "must_exist": true
+            }
+        },
+        "install": "create"
+    },
+    "PubSub/include": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "PubSubConfiguration.h": {
+                "md5": "9c58f3af952d2c2f7e490c26be49e67f",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubEngine.h": {
+                "md5": "226a46225d1d1bf685633aa6c358629b",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubUdp.h": {
+                "md5": "49a0641e12a3cf0a683199338e79ba0e",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubWire.h": {
+                "md5": "ee0dadb11e4c0e138de8d8328a64e5f0",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubXsdBinding.h": {
+                "md5": "b1433b69220b21f36b75e85c5276a831",
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
+    "PubSub/src": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "PubSubConfiguration.cpp": {
+                "md5": "fb75685725ee234078c9f0b65f48557c",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubEngine.cpp": {
+                "md5": "41e26b9dfa4324656a571abd584fb58c",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubUdp.cpp": {
+                "md5": "c2e699c8764f1243f93c5f0dd7692aef",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubWire.cpp": {
+                "md5": "510b4d659c85fb7a8041f51677b5af6f",
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubXsdBinding.cpp": {
+                "md5": "2e26bc418a5f38ab93b94b3330c403c9",
                 "use_defaults": "file_defaults_of_directory"
             }
         },
@@ -1181,7 +1319,7 @@
         "files": {
             "BaseQuasarServer.h": {
                 "install": "overwrite",
-                "md5": "c38849a58f28a5921085f314533ca57d",
+                "md5": "97be83bdb334593c9abff776e7ed5574",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -1248,7 +1386,7 @@
         "files": {
             "BaseQuasarServer.cpp": {
                 "install": "overwrite",
-                "md5": "6a70fc516d8326e68dba298e7e91d0ea",
+                "md5": "f6d508b3e77b62efaba12b4d5e431aa3",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -1273,7 +1411,7 @@
             },
             "opcserver.cpp": {
                 "install": "overwrite",
-                "md5": "50e6243df2c673227b4ac3171b1c4f66",
+                "md5": "1d06767444bf7e380b3ef3f8d1fad5e7",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -1321,7 +1459,7 @@
         "files": {
             "FindOpcUaToolkit.cmake": {
                 "install": "overwrite",
-                "md5": "e0f1977d379f157b8b075e79c426e3c5",
+                "md5": "f41c265c90064cdd4afe80f9324d2b8c",
                 "must_be_versioned": true,
                 "must_exist": true
             },
