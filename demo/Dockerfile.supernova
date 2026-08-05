@@ -1,4 +1,5 @@
-FROM ghcr.io/quasarnova-team/quasar-ci:alma10-o6 AS build
+ARG BASE_ARCH_SUFFIX=
+FROM ghcr.io/quasarnova-team/quasar-ci:alma10-o6${BASE_ARCH_SUFFIX} AS build
 WORKDIR /src
 COPY . .
 COPY demo/Design.xml Design/Design.xml
