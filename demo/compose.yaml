@@ -28,7 +28,7 @@ services:
     entrypoint: ["sh", "-c"]
     command:
       - |
-        for i in $(seq 1 30); do
+        for i in $$(seq 1 30); do
           hypernova register demo/ps1/env \
             --address opc.udp://239.0.0.11:4843 \
             --publisher-id 77 --writer-group-id 100 --dataset-writer-id 1 \
