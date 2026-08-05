@@ -18,7 +18,7 @@ Within a minute your terminal shows live values arriving by name:
 | Service | Product | Role |
 |---------|---------|------|
 | `supernova` | the C++ engine | serves the Design at `opc.tcp://localhost:4841` and publishes `PS1.counter/temperature/label` over OPC UA Pub/Sub (UADP multicast, 10 Hz) — and subscribes to its own counter feed back into `PS1.mirror`, so one server demonstrates both roles |
-| `kilonova` | the Python engine | serves the **identical** `Design.xml` and `config.xml` (volume-mounted from this directory) at `opc.tcp://localhost:4842` — no code generation, no compiler |
+| `kilonova` | the Python engine | serves the **identical** `Design.xml` and `config.xml` (volume-mounted from this directory) at `opc.tcp://localhost:4842` — no code generation, no compiler. Its behavior is [kilonova_logic.py](kilonova_logic.py): the same tick in ten lines of Python, and its `PS1.mirror` tracks the **C++ engine's** counter — decoded off the multicast wire by a hypernova `Subscriber` and written through a generated setter. The wire crosses engines |
 | `registry` | hypernova | gives the publication its name; live browser at <http://localhost:4850> |
 | `seed` | hypernova | one-shot: registers `demo/ps1/env` (a supernova server publishes; the registry only needs to know the name) |
 | `subscriber` | hypernova | `hypernova sub demo/ps1/env` — decodes the wire and prints live values |

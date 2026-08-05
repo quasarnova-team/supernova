@@ -9,10 +9,11 @@ services:
 
   kilonova:
     image: ghcr.io/quasarnova-team/quasarnova-demo:python
-    command: kilonova run --design /demo/Design.xml --config /demo/config.xml --endpoint opc.tcp://0.0.0.0:4842
+    command: python /demo/kilonova_logic.py
     volumes:
       - ./Design.xml:/demo/Design.xml:ro
       - ./config.xml:/demo/config.xml:ro
+      - ./kilonova_logic.py:/demo/kilonova_logic.py:ro
     ports:
       - "4842:4842"
 
