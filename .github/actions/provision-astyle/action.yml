@@ -25,6 +25,7 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
         foreach ($attempt in 1..3) {
           choco install astyle --version ${{ inputs.version }} -y --no-progress
           if ($LASTEXITCODE -eq 0) { break }
@@ -41,6 +42,7 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
         Add-Content $env:GITHUB_PATH 'C:\deps\astyle'
         & C:\deps\astyle\astyle.exe --version
         if ($LASTEXITCODE -ne 0) { throw "astyle failed to run (exit $LASTEXITCODE)" }
