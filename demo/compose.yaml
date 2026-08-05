@@ -3,6 +3,7 @@ name: quasarnova-demo
 services:
   supernova:
     image: ghcr.io/quasarnova-team/quasarnova-demo:supernova
+    hostname: localhost
     ports:
       - "4841:4841"
 

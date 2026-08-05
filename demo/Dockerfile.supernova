@@ -10,8 +10,7 @@ RUN ./quasar.py enable_module open62541-compat v1.5.8 \
  && ./quasar.py generate device --all \
  && ./quasar.py build Release \
  && cp -rL build/bin /out \
- && cp build/Configuration/Configuration.xsd /out-Configuration.xsd \
- && sed -i 's|\[NodeName\]|localhost|' /out/ServerConfig.xml
+ && cp build/Configuration/Configuration.xsd /out-Configuration.xsd
 
 FROM almalinux:10
 RUN dnf install -y epel-release \
