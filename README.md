@@ -80,17 +80,18 @@ divergence is additive and the upgrade is quasar's own — see [MIGRATION.md](MI
 Tested platforms
 ----------------
 
-Every cell below runs in CI from `.CI/test_cases/manifest.json` — the same case
-set on every platform, by construction.
+Case-driven cells derive from `.CI/test_cases/manifest.json`; the two Ubuntu
+lanes gate the build system and the documented quick start.
 
 | Platform | Compiler | Backend | Cadence |
 |----------|----------|---------|---------|
 | Ubuntu 24.04 (clean container) | distro gcc | open62541-compat | quick-start gate, every push |
 | Ubuntu 20.04 / CMake 3.16 | distro gcc | open62541-compat | configure floor, every push |
-| AlmaLinux 9 / 10 | distro gcc | open62541-compat | full case oracle, every push |
+| AlmaLinux 10 (x86_64 + arm64) | distro gcc | open62541-compat | full case oracle, every push |
 | AlmaLinux 10 | clang | open62541-compat | nightly |
-| AlmaLinux 9 / 10, arm64 | distro gcc | open62541-compat | nightly |
-| Windows Server 2025 | MSVC (VS 2022) | open62541-compat + UASDK 1.8.9 / 2.0.3 | full case oracle, every push (nightly adds UASDK 1.6.5) |
+| AlmaLinux 9 | distro gcc | open62541-compat | default-Design smoke, every push |
+| Windows Server 2025 | MSVC (VS 2022) | open62541-compat + UASDK 1.8.9 | full case oracle, every push |
+| Windows Server 2025 | MSVC (VS 2022) | UASDK 2.0.3 (full set) + 1.6.5 (smoke) | nightly |
 
 CMake is exercised at both ends: the 3.16 floor on every push, the unpinned
 latest as a nightly frontier probe.
