@@ -115,6 +115,9 @@ jobs:
           python .CI/test_no_spurious_rebuild.py;   chk "test_no_spurious_rebuild"
           python .CI/test_no_unbound_delegate.py;   chk "test_no_unbound_delegate"
           python .CI/test_generator_selection.py;   chk "test_generator_selection"
+          # Runs here too (not only in ci.yml): the Linux lane is disabled until
+          # provisioned, and the supply-chain pins must be enforced in an ACTIVE lane.
+          python .CI/test_ci_supply_chain.py;       chk "test_ci_supply_chain"
         shell: pwsh
 
   framework-cases-windows:
