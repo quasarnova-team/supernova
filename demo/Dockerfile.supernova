@@ -1,0 +1,18 @@
+FROM ghcr.io/quasarnova-team/quasar-ci:alma10-o6 AS build
+WORKDIR /src
+COPY . .
+COPY demo/Design.xml Design/Design.xml
+COPY demo/config.xml bin/config.xml
+COPY demo/QuasarServer.cpp Server/src/QuasarServer.cpp
+RUN ./quasar.py enable_module open62541-compat v1.5.8 \
+ && ./quasar.py set_build_config open62541_config.cmake \
+ && ./quasar.py build Release \
+ && cp -rL build/bin /out
+
+FROM almalinux:10
+RUN dnf install -y boost xerces-c libxml2 openssl-libs && dnf clean all
+WORKDIR /server
+COPY --from=build /out/ .
+COPY demo/Design.xml /demo/Design.xml
+EXPOSE 4841
+ENTRYPOINT ["./OpcUaServer"]
