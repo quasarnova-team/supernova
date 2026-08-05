@@ -359,3 +359,5 @@ jobs:
         run: python3 .CI/test_ci_supply_chain.py
       - if: always()
         run: python3 .CI/test_create_project.py
+      - if: always()
+        run: python3 .CI/test_docs_pubsub.py
