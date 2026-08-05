@@ -63,7 +63,8 @@ cd supernova
 ```
 
 The `--recursive` flag is required (LogIt is a git submodule). Full build documentation
-lives in-repo under `Documentation/`.
+lives in-repo under `Documentation/`. Coming from stock quasar? The divergence is
+additive and the upgrade is quasar's own — see [MIGRATION.md](MIGRATION.md).
 
 Heritage and license
 --------------------
