@@ -6,6 +6,7 @@ COPY demo/config.xml bin/config.xml
 COPY demo/QuasarServer.cpp Server/src/QuasarServer.cpp
 RUN ./quasar.py enable_module open62541-compat v1.5.8 \
  && ./quasar.py set_build_config open62541_config.cmake \
+ && ./quasar.py generate device --all \
  && ./quasar.py build Release \
  && cp -rL build/bin /out
 
