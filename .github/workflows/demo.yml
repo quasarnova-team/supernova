@@ -4,6 +4,9 @@ name: family-demo
 # with the demo Design baked in; one Python image carrying kilonova + hypernova
 # at pinned commits), publishes them to ghcr, then runs demo/verify.sh — the
 # same compose a user runs — and asserts live values within the 60 s budget.
+# No pull_request trigger by deliberate choice: this repo works master-direct
+# (review-then-merge, no PR ceremony), so the gate fires on the push that lands
+# the change — a red here means fix-forward, same as every other lane.
 on:
   push:
     branches: [master]
@@ -58,3 +61,33 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: docker compose -f demo/compose.yaml pull
       - run: ./demo/verify.sh
+
+  # Advisory: records the demo as asciinema cast + GIF artifacts. Never gates.
+  record:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: docker compose -f demo/compose.yaml pull
+      - run: pipx install asciinema
+      - run: |
+          cd demo
+          asciinema rec demo.cast --overwrite -c \
+            "bash -c 'docker compose up -d >/dev/null 2>&1; timeout 25 docker compose logs -f subscriber | head -40 || true; docker compose down -v >/dev/null 2>&1'"
+      - run: |
+          curl -fsSL -o /tmp/agg https://github.com/asciinema/agg/releases/download/v1.5.0/agg-x86_64-unknown-linux-gnu
+          chmod +x /tmp/agg
+          /tmp/agg demo/demo.cast demo/demo.gif
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-recording
+          path: |
+            demo/demo.cast
+            demo/demo.gif

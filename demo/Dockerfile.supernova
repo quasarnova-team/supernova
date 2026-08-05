@@ -10,7 +10,7 @@ RUN ./quasar.py enable_module open62541-compat v1.5.8 \
  && cp -rL build/bin /out
 
 FROM almalinux:10
-RUN dnf install -y boost xerces-c libxml2 openssl-libs && dnf clean all
+RUN dnf install -y boost xerces-c openssl-libs && dnf clean all
 WORKDIR /server
 COPY --from=build /out/ .
 COPY demo/Design.xml /demo/Design.xml

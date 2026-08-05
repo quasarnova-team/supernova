@@ -10,7 +10,7 @@ docker compose up
 Within a minute your terminal shows live values arriving by name:
 
 ```
-14:03:07  demo/ps1/env  seq=412  counter=412  temperature=27.483  label='supernova'
+14:03:07  demo/ps1/env  seq=412  counter=412  temperature=29.20553815192969  label='supernova'
 ```
 
 ## What is running
