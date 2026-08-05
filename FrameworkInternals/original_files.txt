@@ -266,23 +266,6 @@
         },
         "install": "create"
     },
-    "cmake": {
-        "files": {
-            "FindOpcUaToolkit.cmake": {
-                "install": "overwrite",
-                "md5": "check",
-                "must_be_versioned": true,
-                "must_exist": true
-            },
-            "QuasarSanitizers.cmake": {
-                "install": "overwrite",
-                "md5": "check",
-                "must_be_versioned": true,
-                "must_exist": true
-            }
-        },
-        "install": "create"
-    },
     "Common": {
         "files": {
             "CMakeLists.txt": {
@@ -605,12 +588,6 @@
                 "must_be_versioned": true,
                 "must_exist": true
             },
-            "parser_module.py": {
-                "install": "overwrite",
-                "md5": "check",
-                "must_be_versioned": true,
-                "must_exist": true
-            },
             "UrlHandling.cmake": {
                 "install": "overwrite",
                 "md5": "check",
@@ -721,6 +698,12 @@
                 "must_be_versioned": true,
                 "must_exist": true
             },
+            "parser_module.py": {
+                "install": "overwrite",
+                "md5": "check",
+                "must_be_versioned": true,
+                "must_exist": true
+            },
             "quasarCommands.py": {
                 "install": "overwrite",
                 "md5": "check",
@@ -768,6 +751,63 @@
                 "md5": "check",
                 "must_be_versioned": true,
                 "must_exist": true
+            }
+        },
+        "install": "create"
+    },
+    "Fx": {
+        "files": {
+            "CMakeLists.txt": {
+                "install": "overwrite",
+                "md5": "check",
+                "must_be_versioned": true,
+                "must_exist": true
+            }
+        },
+        "install": "create"
+    },
+    "Fx/include": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "FxConfiguration.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxEngine.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxJson.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxXsdBinding.h": {
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
+    "Fx/src": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "FxConfiguration.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxEngine.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxJson.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "FxXsdBinding.cpp": {
+                "use_defaults": "file_defaults_of_directory"
             }
         },
         "install": "create"
@@ -908,21 +948,6 @@
             "must_exist": true
         },
         "files": {
-            "DLogLevel.h": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "DSourceVariableThreadPool.h": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "MetaBuildInfo.h": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "meta.h": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "metaBackwardsCompatibilityUtils.h": {
-                "use_defaults": "file_defaults_of_directory"
-            },
             "ASBuildInformation.h": {
                 "deprecated": true
             },
@@ -931,7 +956,7 @@
             },
             "ASComponentLogLevels.h": {
                 "deprecated": true
-            }, 
+            },
             "ASGeneralLogLevel.h": {
                 "deprecated": true
             },
@@ -983,17 +1008,32 @@
             "DGeneralLogLevel.h": {
                 "deprecated": true
             },
+            "DLogLevel.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
             "DQuasar.h": {
                 "deprecated": true
             },
             "DServer.h": {
                 "deprecated": true
             },
+            "DSourceVariableThreadPool.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
             "DStandardMetaData.h": {
                 "deprecated": true
             },
+            "MetaBuildInfo.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
             "MetaUtils.h": {
                 "deprecated": true
+            },
+            "meta.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "metaBackwardsCompatibilityUtils.h": {
+                "use_defaults": "file_defaults_of_directory"
             }
         },
         "install": "create"
@@ -1006,21 +1046,6 @@
             "must_exist": true
         },
         "files": {
-            "DLogLevel.cpp": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "DSourceVariableThreadPool.cpp": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "MetaBuildInfo.cpp": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "meta.cpp": {
-                "use_defaults": "file_defaults_of_directory"
-            },
-            "metaBackwardsCompatibilityUtils.cpp": {
-                "use_defaults": "file_defaults_of_directory"
-            },
             "ASBuildInformation.cpp": {
                 "deprecated": true
             },
@@ -1029,7 +1054,7 @@
             },
             "ASComponentLogLevels.cpp": {
                 "deprecated": true
-            }, 
+            },
             "ASGeneralLogLevel.cpp": {
                 "deprecated": true
             },
@@ -1081,17 +1106,95 @@
             "DGeneralLogLevel.cpp": {
                 "deprecated": true
             },
+            "DLogLevel.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
             "DQuasar.cpp": {
                 "deprecated": true
             },
             "DServer.cpp": {
                 "deprecated": true
             },
+            "DSourceVariableThreadPool.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
             "DStandardMetaData.cpp": {
                 "deprecated": true
             },
+            "MetaBuildInfo.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
             "MetaUtils.cpp": {
                 "deprecated": true
+            },
+            "meta.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "metaBackwardsCompatibilityUtils.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
+    "PubSub": {
+        "files": {
+            "CMakeLists.txt": {
+                "install": "overwrite",
+                "md5": "check",
+                "must_be_versioned": true,
+                "must_exist": true
+            }
+        },
+        "install": "create"
+    },
+    "PubSub/include": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "PubSubConfiguration.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubEngine.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubUdp.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubWire.h": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubXsdBinding.h": {
+                "use_defaults": "file_defaults_of_directory"
+            }
+        },
+        "install": "create"
+    },
+    "PubSub/src": {
+        "file_defaults": {
+            "install": "overwrite",
+            "md5": "check",
+            "must_be_versioned": true,
+            "must_exist": true
+        },
+        "files": {
+            "PubSubConfiguration.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubEngine.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubUdp.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubWire.cpp": {
+                "use_defaults": "file_defaults_of_directory"
+            },
+            "PubSubXsdBinding.cpp": {
+                "use_defaults": "file_defaults_of_directory"
             }
         },
         "install": "create"
@@ -1114,6 +1217,12 @@
     "Server/include": {
         "files": {
             "BaseQuasarServer.h": {
+                "install": "overwrite",
+                "md5": "check",
+                "must_be_versioned": true,
+                "must_exist": true
+            },
+            "OpcuaToolkitInfo.hpp.in": {
                 "install": "overwrite",
                 "md5": "check",
                 "must_be_versioned": true,
@@ -1146,12 +1255,6 @@
                 "must_exist": true
             },
             "opcserver_open62541.h": {
-                "install": "overwrite",
-                "md5": "check",
-                "must_be_versioned": true,
-                "must_exist": true
-            },
-            "OpcuaToolkitInfo.hpp.in": {
                 "install": "overwrite",
                 "md5": "check",
                 "must_be_versioned": true,
@@ -1247,6 +1350,23 @@
             },
             "config.xml": {
                 "install": "copy_if_not_existing"
+            }
+        },
+        "install": "create"
+    },
+    "cmake": {
+        "files": {
+            "FindOpcUaToolkit.cmake": {
+                "install": "overwrite",
+                "md5": "check",
+                "must_be_versioned": true,
+                "must_exist": true
+            },
+            "QuasarSanitizers.cmake": {
+                "install": "overwrite",
+                "md5": "check",
+                "must_be_versioned": true,
+                "must_exist": true
             }
         },
         "install": "create"
