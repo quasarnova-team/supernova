@@ -57,5 +57,7 @@ elements to `config.xml` — start with the
 
 The same door, reversed: remove any `PubSub`/`Fx` elements from your
 `config.xml`, then run `upgrade_project` from an upstream quasar checkout.
-Nothing else to undo — your Design, device logic and the rest of your
+The upgrade leaves the `PubSub/` and `Fx/` module directories behind — the
+installer never deletes — but they are inert to an upstream build and safe to
+delete. Nothing else to undo: your Design, device logic and the rest of your
 configuration were never supernova-specific.
