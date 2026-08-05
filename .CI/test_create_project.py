@@ -22,7 +22,8 @@ def main():
     project = os.path.join(scratch, 'project')
     try:
         subprocess.run([sys.executable, 'quasar.py', 'create_project', project],
-                       cwd=QUASAR_ROOT, check=True, timeout=600)
+                       cwd=QUASAR_ROOT, check=True, timeout=600,
+                       env=dict(os.environ, PYTHONUTF8='1'))
         cmake = open(os.path.join(project, 'CMakeLists.txt'), encoding='utf-8').read()
         match = re.search(r'set\(\s*NATIVE_SERVER_MODULES\s+([^)]*)\)', cmake)
         if not match:
