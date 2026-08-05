@@ -120,6 +120,7 @@ jobs:
           # provisioned, and the supply-chain pins must be enforced in an ACTIVE lane.
           python .CI/test_ci_supply_chain.py;       chk "test_ci_supply_chain"
           python .CI/test_create_project.py;        chk "test_create_project"
+          python .CI/test_docs_pubsub.py;           chk "test_docs_pubsub"
         shell: pwsh
 
   framework-cases-windows:

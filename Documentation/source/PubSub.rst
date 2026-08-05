@@ -29,6 +29,10 @@ Preface
   against open62541's native Pub/Sub implementation as an independent
   reference peer.
 
+| This page is the reference. For the runnable end-to-end walk-through —
+  the CI-gated family demo rebuilt piece by piece, publisher and
+  subscriber on both stacks — see :doc:`PubSubTutorial`.
+
 Rationale
 ---------
 
@@ -157,8 +161,10 @@ Quick start: a Pub/Sub hello world
   multicast group 239.0.0.5, port 4840: publisher id 42, writer group
   100, DataSetWriter 1, a data key frame with two fields — the live
   counter and the greeting string. Any OPC UA Part 14 subscriber can
-  receive it; open62541's ``pubsub_subscribe_standalone`` example is a
-  convenient reference tool. And because Pub/Sub coexists with the
+  receive it; the family's reference receiver is hypernova
+  (``hypernova sub``, which also decodes and names streams — see
+  :doc:`PubSubTutorial`), and open62541's ``pubsub_subscribe_standalone``
+  example is a convenient independent tool. And because Pub/Sub coexists with the
   classic server, any ordinary OPC UA client can read
   ``ns=2;s=G1.counter`` over ``opc.tcp`` at the same time and see the
   same values.
@@ -275,11 +281,50 @@ Wire format and interoperability
   frames and promoted fields. Chunked and secured (signed/encrypted)
   NetworkMessages are not supported and are rejected with a diagnostic.
 
-Notes and restrictions
-----------------------
+Part 14 coverage
+----------------
 
--  There is no Pub/Sub security profile yet: use it on trusted networks
-   (the classic client/server endpoint security is unaffected).
+| Exactly which parts of OPC UA Part 14 this module implements — stated
+  as a contract, not an aspiration:
+
+**Implemented**
+
+-  UADP NetworkMessage version 1 over UDP (``opc.udp://``), unicast and
+   multicast, both roles simultaneously in one server
+-  data key frames with Variant field encoding; publisher id as ``Byte``,
+   ``UInt16``, ``UInt32`` or ``UInt64``; group header with writer-group
+   id and sequence numbers (loss detection on receive)
+-  scalar fields: Boolean, Byte, Int16, UInt16, Int32, UInt32, Int64,
+   UInt64, Float, Double, String
+-  static configuration from ``config.xml``, and dynamic reconfiguration
+   at runtime — empty start, add/remove of writers and readers while
+   running; the OPC UA FX connection services build on this
+   (see :doc:`Fx`)
+
+**Accepted on receive only**
+
+-  DataValue field encoding; timestamps, picoseconds, status and
+   configuration-version fields; keep-alive frames; promoted fields
+
+**Not implemented**
+
+-  Pub/Sub security (message signing/encryption, Security Key Services):
+   only unsecured NetworkMessages are produced, secured frames are
+   rejected with a diagnostic — use trusted networks; classic
+   client/server endpoint security is unaffected
+-  transports and mappings beyond UDP/UADP: no MQTT, no AMQP, no
+   Ethernet, no JSON message mapping
+-  delta frames on send (every published DataSetMessage is a data key
+   frame); chunked NetworkMessages are rejected on receive
+-  arrays and structured types as published fields (an unsupported
+   published type is sent as a Null variant with a warning; an
+   unsupported received field is skipped)
+-  the Part 14 configuration information model (PubSubState machine,
+   configuration through the address space) and Pub/Sub discovery
+
+Operational notes
+-----------------
+
 -  The publisher id is one attribute on ``PubSub`` and is shared by all
    connections of the server; readers specify the *remote* publisher id
    they listen to.
