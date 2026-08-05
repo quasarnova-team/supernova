@@ -8,7 +8,8 @@ RUN ./quasar.py enable_module open62541-compat v1.5.8 \
  && ./quasar.py set_build_config open62541_config.cmake \
  && ./quasar.py generate device --all \
  && ./quasar.py build Release \
- && cp -rL build/bin /out
+ && cp -rL build/bin /out \
+ && cp build/Configuration/Configuration.xsd /out-Configuration.xsd
 
 FROM almalinux:10
 RUN dnf install -y epel-release \
@@ -16,6 +17,7 @@ RUN dnf install -y epel-release \
  && dnf clean all
 WORKDIR /server
 COPY --from=build /out/ .
+COPY --from=build /out-Configuration.xsd /Configuration/Configuration.xsd
 COPY demo/Design.xml /demo/Design.xml
 EXPOSE 4841
 ENTRYPOINT ["./OpcUaServer"]
