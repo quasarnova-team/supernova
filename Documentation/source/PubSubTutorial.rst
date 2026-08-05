@@ -52,8 +52,9 @@ The sixty-second path
 The model
 ---------
 
-| ``demo/Design.xml`` — byte-identical to the ``pubsub`` case the CI
-  oracle validates on every platform. Nothing in it is Pub/Sub-specific:
+| ``demo/Design.xml`` — byte-identical to the ``pubsub`` case CI builds
+  and boots on the matrix's main platforms on every push. Nothing in it
+  is Pub/Sub-specific:
   they are ordinary cache variables, which is the point — any cache
   variable of a supported type can be published.
 
@@ -104,8 +105,9 @@ Building it, on either stack
   changes — choose your UASDK build configuration with
   ``set_build_config`` as for any quasar server; the configuration file
   and the wire behaviour are identical. This is not an aspiration: the
-  Windows CI runs the same Pub/Sub oracle case against UASDK 1.8.9 and
-  2.0.3 on every push, next to the open62541 lane.
+  Windows CI builds and runs the same Pub/Sub case against UASDK 1.8.9
+  on every push, next to the open62541 lane — and against UASDK 2.0.3
+  nightly.
 
 Receiving
 ---------
@@ -146,8 +148,9 @@ Verified end to end
 -  the ``family-demo`` workflow runs the compose above on clean x86_64
    and arm64 runners on every demo change and fails unless changing
    values arrive within sixty seconds;
--  the ``pubsub`` oracle case (this Design) runs on every platform of the
-   CI matrix, on both stacks;
+-  the ``pubsub`` case (this Design) builds and boots on every push on
+   alma10 (x86_64 and arm64) and on Windows Server 2025, where it runs on
+   both stacks (open62541 + UASDK 1.8.9; 2.0.3 nightly);
 -  the wire codec has its own unit suite (``pubsub-tests`` workflow);
 -  the :doc:`PubSub` configuration reference is checked against the
    generated schema by a hermetic CI test — an attribute added to the

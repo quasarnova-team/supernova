@@ -265,9 +265,11 @@ Supported field types
 ---------------------
 
 | Boolean, Byte, Int16, UInt16, Int32, UInt32, Int64, UInt64, Float,
-  Double and String scalars. A published field of an unsupported type is
+  Double and String scalars, and one-dimensional arrays of the same
+  types in both directions. A published field of an unsupported type is
   sent as a Null variant (with a warning in the log); a received field of
-  an unsupported type is skipped. Arrays are not yet supported.
+  an unsupported type is skipped. Multi-dimensional arrays and structured
+  types are not supported.
 
 Wire format and interoperability
 --------------------------------
@@ -293,9 +295,12 @@ Part 14 coverage
    multicast, both roles simultaneously in one server
 -  data key frames with Variant field encoding; publisher id as ``Byte``,
    ``UInt16``, ``UInt32`` or ``UInt64``; group header with writer-group
-   id and sequence numbers (loss detection on receive)
+   id and sequence numbers (transmitted on every frame — the subscriber
+   does not yet check them for gaps)
 -  scalar fields: Boolean, Byte, Int16, UInt16, Int32, UInt32, Int64,
    UInt64, Float, Double, String
+-  one-dimensional arrays of the supported types, published and received
+   (including SByte arrays — an asymmetry: scalar SByte is not supported)
 -  static configuration from ``config.xml``, and dynamic reconfiguration
    at runtime — empty start, add/remove of writers and readers while
    running; the OPC UA FX connection services build on this
@@ -310,15 +315,15 @@ Part 14 coverage
 
 -  Pub/Sub security (message signing/encryption, Security Key Services):
    only unsecured NetworkMessages are produced, secured frames are
-   rejected with a diagnostic — use trusted networks; classic
-   client/server endpoint security is unaffected
+   rejected on receive (debug-level diagnostic) — use trusted networks;
+   classic client/server endpoint security is unaffected
 -  transports and mappings beyond UDP/UADP: no MQTT, no AMQP, no
    Ethernet, no JSON message mapping
 -  delta frames on send (every published DataSetMessage is a data key
    frame); chunked NetworkMessages are rejected on receive
--  arrays and structured types as published fields (an unsupported
-   published type is sent as a Null variant with a warning; an
-   unsupported received field is skipped)
+-  multi-dimensional arrays and structured types as published fields (an
+   unsupported published type is sent as a Null variant with a warning;
+   an unsupported received field is skipped)
 -  the Part 14 configuration information model (PubSubState machine,
    configuration through the address space) and Pub/Sub discovery
 
