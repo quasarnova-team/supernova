@@ -156,7 +156,7 @@ jobs:
           function chkOracleFetch($step) { if ($LASTEXITCODE -ne 0) { throw "$step failed (exit $LASTEXITCODE) acquiring the nodeset_compare oracle at commit $env:NODESETTOOLS_COMMIT from $nodeSetToolsRepo - if the fetch is the step that failed, the pinned commit is no longer reachable upstream and NODESETTOOLS_COMMIT must be re-pinned in this workflow" } }
           git init -q $nodeSetToolsDir; chkOracleFetch 'git init'
           git -C $nodeSetToolsDir remote add origin $nodeSetToolsRepo; chkOracleFetch 'git remote add origin'
-          git -C $nodeSetToolsDir fetch --depth=1 origin $env:NODESETTOOLS_COMMIT; chkOracleFetch 'git fetch of the pinned commit (git clone -b accepts branch and tag names only, never a commit, hence this init+fetch form)'
+          git -C $nodeSetToolsDir fetch --no-tags --depth=1 origin $env:NODESETTOOLS_COMMIT; chkOracleFetch 'git fetch of the pinned commit (git clone -b accepts branch and tag names only, never a commit, hence this init+fetch form)'
           git -C $nodeSetToolsDir checkout -q --detach FETCH_HEAD; chkOracleFetch 'git checkout --detach FETCH_HEAD'
           $env:QUASAR_NODESETTOOLS = $nodeSetToolsDir
           python .CI\run_test_case.py --case ${{ matrix.case }} --backend o6
@@ -405,7 +405,7 @@ jobs:
           function chkOracleFetch($step) { if ($LASTEXITCODE -ne 0) { throw "$step failed (exit $LASTEXITCODE) acquiring the nodeset_compare oracle at commit $env:NODESETTOOLS_COMMIT from $nodeSetToolsRepo - if the fetch is the step that failed, the pinned commit is no longer reachable upstream and NODESETTOOLS_COMMIT must be re-pinned in this workflow" } }
           git init -q $nodeSetToolsDir; chkOracleFetch 'git init'
           git -C $nodeSetToolsDir remote add origin $nodeSetToolsRepo; chkOracleFetch 'git remote add origin'
-          git -C $nodeSetToolsDir fetch --depth=1 origin $env:NODESETTOOLS_COMMIT; chkOracleFetch 'git fetch of the pinned commit (git clone -b accepts branch and tag names only, never a commit, hence this init+fetch form)'
+          git -C $nodeSetToolsDir fetch --no-tags --depth=1 origin $env:NODESETTOOLS_COMMIT; chkOracleFetch 'git fetch of the pinned commit (git clone -b accepts branch and tag names only, never a commit, hence this init+fetch form)'
           git -C $nodeSetToolsDir checkout -q --detach FETCH_HEAD; chkOracleFetch 'git checkout --detach FETCH_HEAD'
           $env:QUASAR_NODESETTOOLS = $nodeSetToolsDir
           python .CI\run_test_case.py --case ${{ matrix.case }} --backend uasdk
