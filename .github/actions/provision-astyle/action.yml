@@ -37,13 +37,6 @@ runs:
         New-Item -ItemType Directory -Force C:\deps\astyle | Out-Null
         Copy-Item $exe.FullName C:\deps\astyle\astyle.exe -Force
 
-    - name: Save astyle to cache
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: C:\deps\astyle\astyle.exe
-        key: astyle-win-${{ inputs.version }}
-
     - name: Put astyle on PATH and verify it runs
       shell: pwsh
       run: |
@@ -51,3 +44,10 @@ runs:
         Add-Content $env:GITHUB_PATH 'C:\deps\astyle'
         & C:\deps\astyle\astyle.exe --version
         if ($LASTEXITCODE -ne 0) { throw "astyle failed to run (exit $LASTEXITCODE)" }
+
+    - name: Save astyle to cache (only a verified binary)
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: C:\deps\astyle\astyle.exe
+        key: astyle-win-${{ inputs.version }}
