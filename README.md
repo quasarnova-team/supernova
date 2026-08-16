@@ -65,7 +65,7 @@ sudo apt-get update
 sudo apt-get install -y cmake g++ git astyle python3 python3-jinja2 python3-lxml python3-colorama python3-pygit2 libboost-all-dev libssl-dev libxml2-utils libxml2-dev libxerces-c-dev xsdcxx
 git clone --recursive https://github.com/quasarnova-team/supernova
 cd supernova
-./quasar.py enable_module open62541-compat v1.5.8
+./quasar.py enable_module open62541-compat v1.5.12
 ./quasar.py set_build_config open62541_config.cmake
 ./quasar.py build Release
 cd build/bin && ./OpcUaServer
