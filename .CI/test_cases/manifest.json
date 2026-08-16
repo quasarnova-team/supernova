@@ -23,7 +23,7 @@
   "_compat_master_doc": "backends.o6.compat_branch pins open62541-compat for stability. One nightly ADVISORY cell (default_design.extra_cells: compat_branch=master, advisory=true) builds against compat MASTER so an upstream merge that breaks embedded-in-quasar builds surfaces the next night instead of at the next compat release. Advisory: continue-on-error in ci.yml -- signals maintainers, never blocks contributors.",
   "backends": {
     "o6": {
-      "compat_branch": "v1.5.8"
+      "compat_branch": "v1.5.12"
     },
     "uasdk": {}
   },
@@ -31,7 +31,11 @@
     "uasdk": [
       {
         "version": "1.8.9",
-        "tier": "pr"
+        "tier": "nightly",
+        "arches": [
+          "x86_64",
+          "arm64"
+        ]
       },
       {
         "version": "1.6.5",
@@ -42,7 +46,10 @@
       },
       {
         "version": "2.0.3",
-        "tier": "nightly"
+        "tier": "pr",
+        "arches": [
+          "x86_64"
+        ]
       }
     ]
   },
@@ -138,6 +145,7 @@
       "design": "test_config_entries/Design.xml",
       "config": "test_config_entries/config.xml",
       "generate_devices": true,
+      "device_sources": "test_config_entries",
       "oracle": "test_config_entries/reference_ns2.xml",
       "backends": [
         "o6",

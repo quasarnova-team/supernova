@@ -4,8 +4,7 @@ description: >
   + uasak, each pinned to an exact commit, and caches it keyed on those pins, this
   file's build recipe and the toolchain. uasak_dump is a backend-agnostic OPC UA
   client, so one build serves both the o6 and uasdk lanes. Requires the
-  setup-quasar-windows action to have run first (MSVC + Boost + XSD + vcpkg on
-  the environment).
+  setup-quasar-windows action to have run first.
 
 runs:
   using: composite
@@ -18,7 +17,7 @@ runs:
         $PSNativeCommandUseErrorActionPreference = $false
         $pins = @(
           @{ id='uasak';  repo='https://github.com/quasar-team/UaSwissArmyKnife.git'; tag='';       sha='83cfc083a97337dcc4ae2ba4c2925fdaa12901ef' },
-          @{ id='compat'; repo='https://github.com/quasar-team/open62541-compat.git'; tag='v1.5.8'; sha='a7c15940c91bb679d5b730c479178a3b13d5a6d4' },
+          @{ id='compat'; repo='https://github.com/quasar-team/open62541-compat.git'; tag='v1.5.12'; sha='ec48098d145436f6c39d5d100179bf63f2d05408' },
           @{ id='logit';  repo='https://github.com/quasar-team/LogIt.git';            tag='v0.1.3'; sha='6bf35197ef80f175c08d7888fcfa6563916d01ba' }
         )
         function Write-AdvisoryTagDriftAnnotation {
@@ -56,20 +55,15 @@ runs:
         if (-not $ap) { throw "GITHUB_ACTION_PATH not set - cannot hash the build recipe into the cache key" }
         $recipeHash = (Get-FileHash "$ap/action.yml" -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
         $vc = $env:VCToolsVersion; if (-not $vc) { $vc = 'unknown' }
-        $vc = (($vc -split '\.')[0..1] -join '.')
-        # boost1.67vc141 tracks the setup-quasar-windows Boost pin; vcpkgv2 tracks
-        # its vcpkg cache key version (...-xerces-v2). Change those, change these.
-        # Hashing the recipe stops an edited build from restoring the binary a
-        # previous recipe produced (a PR would go green on master's exe and then
-        # flip the oracle for everyone at a later eviction); the price is one cold
-        # uasak_dump build per Windows cell whenever this file changes.
-        $key = "uasak-dump-win-$($short -join '-')-vc$vc-boost1.67vc141-vcpkgv2-r$recipeHash"
+        $deps = $env:IMAGES_W2025_REF; if (-not $deps) { throw "IMAGES_W2025_REF not set - setup-quasar-windows must run first" }
+        $key = "uasak-dump-win-$($short -join '-')-vc$vc-deps$deps-r$recipeHash"
         Write-Host "uasak_dump cache key: $key"
+        Write-Host "cache key inputs: the pinned uasak/compat/LogIt commits, full MSVC VCToolsVersion $vc, w2025 dep tree $deps, and the SHA-256 of this action.yml - hashing the recipe is what stops an edited build from restoring the binary a previous recipe produced, which would otherwise let a PR go green on master's exe and then flip the oracle for everyone at a later eviction; the price is one cold uasak_dump build per Windows cell whenever this file changes"
         "key=$key" >> $env:GITHUB_OUTPUT
 
     - name: Restore uasak_dump from cache
       id: cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: uasak/build/uasak_dump.exe
         key: ${{ steps.key.outputs.key }}
@@ -89,9 +83,6 @@ runs:
       run: |
         $ErrorActionPreference='Stop'
         $PSNativeCommandUseErrorActionPreference = $false
-        # PowerShell's ErrorActionPreference does NOT stop on a native-exe nonzero
-        # exit, so a failed cmake silently cascades. Guard every cmake call so the
-        # first real failure stops here and is attributable.
         function chk($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" } }
         foreach ($v in 'UASAK_REPO','UASAK_SHA','COMPAT_REPO','COMPAT_TAG','COMPAT_SHA','LOGIT_REPO','LOGIT_TAG','LOGIT_SHA') {
           if (-not [Environment]::GetEnvironmentVariable($v)) { throw "$v is empty - the pins table in the key step did not emit it (compat/LogIt are cloned by tag; SHA-pinning them means switching to the fetch-by-commit form used for uasak)" }
@@ -100,78 +91,52 @@ runs:
           $head = (git -C $dir rev-parse HEAD); chk "rev-parse in $dir"
           if ($head -ne $sha) { throw "$dir is at $head but the cache key was derived from $sha - refusing to cache a binary under a key that does not describe it" }
         }
-        # LogIt (2.8) and uasak (3.0) declare cmake_minimum_required < 3.5, which the
-        # runner's CMake 4.x removed support for -- the documented escape hatch is
-        # CMAKE_POLICY_VERSION_MINIMUM=3.5 (harmless for compat, which requires 3.16).
-        $policy = '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
-        # LogIt/compat/uasak resolve Boost via find_package(Boost COMPONENTS ...),
-        # which is independent of quasar's path-based BoostSetup. Two adjustments
-        # are needed for the nuget Boost on this runner:
-        #  * Drop the job-inherited vcpkg CMAKE_TOOLCHAIN_FILE -- LogIt's stand-alone
-        #    CMake include()s it and then FATALs because it never sets BOOST_LIBS.
-        #    Without it, LogIt falls back to its own find_package(Boost) path.
-        #  * Steer FindBoost at the nuget vc141 *static* layout: the runner's cl is
-        #    vc143, so FindBoost would otherwise hunt for -vc143 libs nuget never ships.
+        $cmake4LegacyPolicyFlag = '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
         Remove-Item Env:CMAKE_TOOLCHAIN_FILE -ErrorAction SilentlyContinue
-        # Collect the nuget boost component libs into one dir for FindBoost's
-        # BOOST_LIBRARYDIR. Materialise the source list with @(...) and exclude the
-        # destination, or the lazy -Recurse enumeration walks into libs/ mid-copy and
-        # fails ("cannot overwrite the item ... with itself"). nuget ships x32+x64 and
-        # release+debug; FindBoost picks -x64 release via the hints below.
-        $libDst = 'C:\deps\boost\libs'
-        New-Item -ItemType Directory -Force $libDst | Out-Null
-        $srcLibs = @(Get-ChildItem C:\deps\boost -Recurse -Filter 'libboost_*.lib' -File | Where-Object { $_.DirectoryName -ne $libDst })
-        Write-Host "collecting $($srcLibs.Count) boost libs into $libDst"
-        $srcLibs | Copy-Item -Destination $libDst -Force
+        $sample = Get-ChildItem "$env:BOOST_PATH_LIBS" -Filter 'libboost_thread-*-mt-x64-*.lib' | Select-Object -First 1
+        if (-not $sample) { throw "no libboost_thread-*-mt-x64-*.lib under $env:BOOST_PATH_LIBS - LogIt/compat/uasak resolve Boost through find_package, independently of quasar's path-based BoostSetup, and thread is the probe because Boost >= 1.89 ships no compiled system lib" }
+        $bcfg = Get-ChildItem "$env:BOOST_PATH_LIBS\cmake" -Directory -Filter 'Boost-*' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $bcfg) { throw "no BoostConfig dir under $env:BOOST_PATH_LIBS\cmake - CMake 4 removed the FindBoost module, so Boost must resolve in CONFIG mode via Boost_DIR and the old Boost_COMPILER/FindBoost hints no longer apply" }
+        Write-Host "boost lib sample: $($sample.Name); Boost_DIR: $($bcfg.FullName)"
         $boost = @(
-          "-DBOOST_INCLUDEDIR=$env:BOOST_PATH_HEADERS",
-          "-DBOOST_LIBRARYDIR=C:\deps\boost\libs",
-          "-DBoost_USE_STATIC_LIBS=ON",
-          "-DBoost_COMPILER=-vc141",
-          "-DBoost_ARCHITECTURE=-x64",
-          "-DBoost_NO_BOOST_CMAKE=ON"
+          "-DBoost_DIR=$($bcfg.FullName)",
+          "-DBoost_USE_STATIC_LIBS=ON"
         )
         New-Item -ItemType Directory -Force uasak | Out-Null
         cd uasak
         git init -q .; chk "uasak git init"
         git remote add origin $env:UASAK_REPO; chk "uasak remote add"
-        git fetch --no-tags --depth=1 origin $env:UASAK_SHA; chk "uasak fetch of $env:UASAK_SHA (git clone -b takes a branch or a tag and never a bare commit, hence this init+fetch form; if the commit is unreachable, the ref carrying it was rewritten or deleted upstream - re-pin from: git ls-remote $env:UASAK_REPO refs/heads/windows-msvc)"
+        git fetch --no-tags --depth=1 origin $env:UASAK_SHA; chk "uasak fetch of $env:UASAK_SHA (git clone -b takes a branch or a tag and never a bare commit, hence this init+fetch form; if the commit is unreachable, the ref carrying it was rewritten or deleted upstream - re-pin from: git ls-remote $env:UASAK_REPO refs/heads/windows-msvc refs/tags/v0.8.0 refs/heads/master)"
         git checkout -q --detach FETCH_HEAD; chk "uasak checkout"
         Assert-Pinned '.' $env:UASAK_SHA
         New-Item -ItemType Directory -Force build\deploy | Out-Null
-        # 1) LogIt -> static lib + headers into build/deploy/LogIt
         git clone --depth=1 -b $env:LOGIT_TAG $env:LOGIT_REPO build\work\LogIt; chk "LogIt clone of $env:LOGIT_TAG (if the tag is gone, re-point or re-pin in this file)"
         Assert-Pinned 'build\work\LogIt' $env:LOGIT_SHA
-        cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja $policy -DCMAKE_BUILD_TYPE=Release -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"; chk "LogIt configure"
+        cmake -S build\work\LogIt -B build\work\LogIt\b -G Ninja $cmake4LegacyPolicyFlag -DCMAKE_BUILD_TYPE=Release -DLOGIT_BUILD_STAND_ALONE=ON -DLOGIT_BUILD_STATIC_LIB=ON @boost -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\LogIt"; chk "LogIt configure (LogIt declares cmake_minimum_required 2.8, which CMake 4 refuses without $cmake4LegacyPolicyFlag)"
         cmake --build build\work\LogIt\b; chk "LogIt build"
         cmake --install build\work\LogIt\b; chk "LogIt install"
-        # 2) open62541-compat (fork) -> static lib + headers into build/deploy/open62541-compat
-        # compat >= v1.5.8 resolves Boost via find_package(Boost CONFIG), which the
-        # nuget 1.67 layout (pre-BoostConfig) cannot serve. Use compat's own
-        # boost_custom_win.cmake (new in v1.5.8): it globs tagged libs from the
-        # flat $env:BOOST_PATH_LIBS dir — exactly the C:\deps\boost\libs assembled
-        # above — bypassing discovery. It requires an explicit CMAKE_BUILD_TYPE
-        # (Release picks the -mt- libs and the /MD runtime; empty drifts to debug
-        # autolink names). Absolute config path: compat's include() resolves
-        # relative names against the cmake cwd (the uasak dir), not its source dir.
         git clone -b $env:COMPAT_TAG $env:COMPAT_REPO build\work\compat; chk "compat clone of $env:COMPAT_TAG (if the tag is gone, re-point or re-pin in this file)"
         Assert-Pinned 'build\work\compat' $env:COMPAT_SHA
-        $env:BOOST_PATH_LIBS = 'C:\deps\boost\libs'
-        cmake -S build\work\compat -B build\work\compat\b -G Ninja $policy -DCMAKE_BUILD_TYPE=Release -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" -DOPEN62541-COMPAT_BUILD_CONFIG_FILE="$($PWD.Path -replace '\\','/')/build/work/compat/boost_custom_win.cmake" -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON; chk "compat configure"
-        cmake --build build\work\compat\b; chk "compat build"
+        if (-not (Test-Path 'build\work\compat\boost_custom_win.cmake')) { throw "compat $env:COMPAT_TAG does not ship boost_custom_win.cmake - this build depends on it to glob tagged Boost libs straight from the flat $env:BOOST_PATH_LIBS instead of going through find_package discovery" }
+        $compatBoostConfigAbsolutePath = "$($PWD.Path -replace '\\','/')/build/work/compat/boost_custom_win.cmake"
+        cmake -S build\work\compat -B build\work\compat\b -G Ninja $cmake4LegacyPolicyFlag -DCMAKE_BUILD_TYPE=Release -DSTANDALONE_BUILD=ON -DLOGIT_BUILD_OPTION=LOGIT_AS_EXT_STATIC -DLOGIT_INCLUDE_DIR="$PWD\build\deploy\LogIt\include" -DLOGIT_EXT_LIB_DIR="$PWD\build\deploy\LogIt\lib" -DOPEN62541-COMPAT_BUILD_CONFIG_FILE="$compatBoostConfigAbsolutePath" -DCMAKE_INSTALL_PREFIX="$PWD\build\deploy\open62541-compat" -DSKIP_TESTS=ON; chk "compat configure (the build config file is passed absolute because compat's include() resolves relative names against the cmake working directory, not its own source dir)"
+        cmake --build build\work\compat\b; chk "compat build (unresolved libboost_*-gd-* autolink names here mean CMAKE_BUILD_TYPE did not reach compat as Release, which is what selects the -mt- libs and the /MD runtime)"
         cmake --install build\work\compat\b; chk "compat install"
-        # 3) uasak_dump itself. xerces-c is linked by bare name -> put vcpkg lib on LIB;
-        #    the xsd-generated UANodeSet.cxx pulls <xsd/cxx/...> + <xercesc/...> headers
-        #    that uasak's include_directories doesn't cover -> add them to cl's INCLUDE.
-        $env:LIB = "$env:LIB;C:\vcpkg\installed\x64-windows\lib"
-        $env:INCLUDE = "$env:INCLUDE;$env:CODE_SYNTHESYS_XSD_PATH_HEADERS;C:\vcpkg\installed\x64-windows\include"
-        cmake -S . -B build -G Ninja $policy -DCMAKE_BUILD_TYPE=Release @boost -DXSD_CXX_COMMAND=xsd -DCMAKE_EXE_LINKER_FLAGS="/LIBPATH:C:\vcpkg\installed\x64-windows\lib /LIBPATH:C:\deps\boost\libs"; chk "uasak configure (a CMake 'list ... index 2 out of range' here means git describe --tags saw a tag - the fetch above is --no-tags precisely so describe stays empty and uasak's CMakeLists takes its 0.0.0 fallback)"
-        cmake --build build; chk "uasak build"
+        if (-not (Test-Path "$env:XERCESC_PATH_LIBS\xerces-c.lib")) {
+          if (-not (Test-Path "$env:XERCESC_PATH_LIBS\xerces-c_3.lib")) { throw "no xerces-c.lib and no xerces-c_3.lib under $env:XERCESC_PATH_LIBS - uasak links xerces-c by bare name, so the w2025 static lib has to be aliased to xerces-c.lib" }
+          Copy-Item "$env:XERCESC_PATH_LIBS\xerces-c_3.lib" "$env:XERCESC_PATH_LIBS\xerces-c.lib"
+        }
+        $env:LIB = "$env:LIB;$env:XERCESC_PATH_LIBS"
+        $env:INCLUDE = "$env:INCLUDE;$env:CODE_SYNTHESYS_XSD_PATH_HEADERS;$env:XERCESC_PATH_HEADERS"
+        $xercesStaticLinkDefine = '/DXERCES_STATIC_LIBRARY'
+        $env:CL = "$env:CL $xercesStaticLinkDefine"
+        cmake -S . -B build -G Ninja $cmake4LegacyPolicyFlag -DCMAKE_BUILD_TYPE=Release @boost -DXSD_CXX_COMMAND=xsdcxx -DCMAKE_EXE_LINKER_FLAGS="/LIBPATH:$env:XERCESC_PATH_LIBS /LIBPATH:$env:BOOST_PATH_LIBS"; chk "uasak configure (a CMake 'list ... index 2 out of range' here means git describe --tags saw a tag - the fetch above is --no-tags precisely so describe stays empty and uasak's CMakeLists takes its 0.0.0 fallback)"
+        cmake --build build; chk "uasak build (unresolved __imp_ xercesc symbols here mean $xercesStaticLinkDefine did not reach cl - the w2025 xerces is static and its headers declare dllimport without that define; the xsd-generated UANodeSet.cxx also needs the xsd and xercesc header dirs on INCLUDE, which is why they are appended above)"
         Get-ChildItem -Recurse -Filter 'uasak_dump*' build | Select-Object FullName
 
     - name: Save uasak_dump to cache
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: uasak/build/uasak_dump.exe
         key: ${{ steps.key.outputs.key }}

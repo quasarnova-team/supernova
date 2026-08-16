@@ -371,7 +371,7 @@
         "files": {
             "CMakeLists.txt": {
                 "install": "overwrite",
-                "md5": "5c5764b2fd701b34a50d889a0142490a",
+                "md5": "c0ad56dea6f0bb08ef90cd1f2970ba5d",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -461,7 +461,7 @@
             },
             "quasarVersion.txt": {
                 "install": "overwrite",
-                "md5": "09a233e24401bc87a41534ddc8b80a30",
+                "md5": "3f0df5cc5ce535fdac5c9d560148b58e",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -546,11 +546,11 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToDeviceBaseBody.jinja": {
-                "md5": "b68406064c7072c4b5c044a178ec0402",
+                "md5": "bbcb30b2b6f8396bfff5c6c26749fa65",
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToDeviceBaseHeader.jinja": {
-                "md5": "46fecb3594140db8b926dd5060035d17",
+                "md5": "400bec46f1d5e0fd2629a8dbb7793f4f",
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToDeviceBody.jinja": {
@@ -574,7 +574,7 @@
                 "use_defaults": "file_defaults_of_directory"
             },
             "designToRootHeader.jinja": {
-                "md5": "5e3e2d69ba9bd55349989dec963590b0",
+                "md5": "6ffbb132ead4c537df87e1a75087cce5",
                 "use_defaults": "file_defaults_of_directory"
             }
         },
@@ -715,7 +715,7 @@
             },
             "generateCmake.py": {
                 "install": "overwrite",
-                "md5": "07b3fb6d0ef850267d9499ce2dde9e9e",
+                "md5": "3c5d9b18d39937960251ed872c7634cc",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -1345,7 +1345,7 @@
             },
             "QuasarVersion.h": {
                 "install": "overwrite",
-                "md5": "6eb955a0950a6d57cf8109e8940599f6",
+                "md5": "3e89da4ce80948261696dc4c5d018aa0",
                 "must_be_versioned": true,
                 "must_exist": true
             },
@@ -1459,7 +1459,7 @@
         "files": {
             "FindOpcUaToolkit.cmake": {
                 "install": "overwrite",
-                "md5": "f41c265c90064cdd4afe80f9324d2b8c",
+                "md5": "e51b3263274922c27e35609dcc20ef5a",
                 "must_be_versioned": true,
                 "must_exist": true
             },

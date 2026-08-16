@@ -15,7 +15,7 @@ runs:
   steps:
     - name: Restore astyle from cache
       id: cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: C:\deps\astyle\astyle.exe
         key: astyle-win-${{ inputs.version }}
@@ -49,7 +49,7 @@ runs:
 
     - name: Save astyle to cache (only a verified binary)
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: C:\deps\astyle\astyle.exe
         key: astyle-win-${{ inputs.version }}
