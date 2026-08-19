@@ -1,0 +1,57 @@
+# Fork CI inventory
+#
+# supernova is a fork of quasar-team/quasar and merges upstream regularly, so
+# upstream's workflows arrive here whether or not they make sense in this repo.
+# Some are specific to CERN infrastructure quasarnova does not have -- no CERN
+# GitLab mirror, no self-hosted runner -- and, left alone, they fail on secrets
+# we don't have and file false alarms into this repo. That is what happened with
+# issue #26: upstream's mirror check landed with the v2.2.0 merge and alarmed
+# nightly about a mirror quasarnova has never had.
+#
+# This file is the declared, reviewable answer to "what CI does supernova run,
+# and why". `.github/workflows/fork_ci_hygiene.yml` enforces it on every push
+# and PR, so an inherited workflow is caught at merge time rather than by a
+# nightly alarm.
+#
+# Dispositions:
+#   ours    -- written here, no upstream counterpart
+#   shared  -- inherited from upstream and wanted, runs as-is
+
+available_secrets:
+  # Secrets configured on quasarnova-team/supernova. GITHUB_TOKEN is always
+  # provided by Actions. A workflow referencing anything else cannot resolve it,
+  # so it can only fail -- that is this check's primary signal.
+  - GITHUB_TOKEN
+  - UASDK_DL_TOKEN
+
+workflows:
+  .github/workflows/build-ci-images.yml: shared
+  .github/workflows/ci.yml: shared
+  .github/workflows/clang-tidy.yml: shared
+  .github/workflows/demo.yml: ours
+  .github/workflows/fork_ci_hygiene.yml: ours
+  .github/workflows/pubsub-tests.yml: ours
+  .github/workflows/windows.yml: shared
+
+absent:
+  # Upstream workflows deliberately deleted here. They target quasar's own CERN
+  # infrastructure and can never work in this fork. Listed so that if one comes
+  # back -- an upstream merge whose modify/delete conflict was resolved the
+  # wrong way -- CI says so, by name, instead of it running and alarming.
+  #
+  # RESOLVING THE MERGE CONFLICT: an upstream merge that touches one of these
+  # reports `CONFLICT (modify/delete)`. The resolution is always to delete it
+  # again:
+  #
+  #     git rm .github/workflows/<name>.yml
+  #
+  # That recurring conflict is the accepted cost of keeping these out.
+  .github/workflows/mirror_staleness.yml:
+    Watches quasar's own mirror at gitlab.cern.ch/quasar-team/quasar and needs
+    GITLAB_MIRROR_RO_TOKEN. quasarnova has no CERN GitLab mirror at all.
+  .github/workflows/runner_health_check.yml:
+    Watches quasar's own self-hosted runner (vmatldcsdoc-1) and needs
+    RUNNER_API_TOKEN. supernova has no self-hosted runner.
+  .github/workflows/deploy_documentation.yml:
+    Builds on that same runner with quasar's credentials (QUASAR_PASS, SMTP_*).
+    supernova publishes its documentation by its own means.
