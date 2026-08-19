@@ -75,7 +75,8 @@ cd build/bin && ./OpcUaServer
 The `--recursive` flag is required (LogIt is a git submodule). The server binds
 `opc.tcp://localhost:4841` with the demo Design; stop it with Ctrl-C. Full build
 documentation lives in-repo under `Documentation/`. Coming from stock quasar? The
-divergence is additive and the upgrade is quasar's own — see [MIGRATION.md](MIGRATION.md).
+divergence is additive and the upgrade is quasar's own — `./quasar.py upgrade_project`
+from a supernova checkout, with nothing to adopt on day one.
 
 The 60-second demo
 ------------------

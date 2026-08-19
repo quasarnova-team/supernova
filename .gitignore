@@ -24,3 +24,6 @@ env/
 
 # uasdk pre-built tarball downloaded by CI build-uasdk (never commit the commercial SDK)
 .CI/docker/_uasdk/
+
+# kept local, not published
+MIGRATION.md
