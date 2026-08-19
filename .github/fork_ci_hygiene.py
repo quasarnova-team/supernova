@@ -12,6 +12,8 @@ This catches such a workflow at merge time. Three rules:
   2. A workflow listed under `absent` must not exist -- if an upstream merge
      brought a deleted one back, say so by name.
   3. A workflow may only reference secrets this repo actually has.
+  4. A job listed under `absent_jobs` must not exist in its workflow -- upstream
+     edits these files often, so a deleted job can return inside a larger hunk.
 """
 
 import re
@@ -33,6 +35,7 @@ def main():
     available = set(inventory.get("available_secrets") or [])
     declared = inventory.get("workflows") or {}
     absent = inventory.get("absent") or {}
+    absent_jobs = inventory.get("absent_jobs") or {}
 
     for path, disposition in declared.items():
         if disposition not in VALID:
@@ -75,6 +78,28 @@ def main():
             f"    to `absent:` if it was deleted on purpose."
         )
 
+    # Rule 4 -- deliberately deleted jobs must stay deleted.
+    for path, jobs in absent_jobs.items():
+        full = ROOT / path
+        if not full.exists():
+            continue
+        try:
+            doc = yaml.safe_load(full.read_text()) or {}
+        except yaml.YAMLError:
+            continue  # rule 3 reports the parse failure
+        present = set(doc.get("jobs") or {})
+        for job, reason in (jobs or {}).items():
+            if job in present:
+                why = " ".join(str(reason).split())
+                failures.append(
+                    f"{path}  (job: {job})\n"
+                    f"    This job was deliberately removed from this fork:\n"
+                    f"      {why}\n"
+                    f"    It is back -- most likely reintroduced by an upstream merge. Delete\n"
+                    f"    the `{job}:` block again, or drop it from `absent_jobs:` in the\n"
+                    f"    inventory if this repo now genuinely wants it."
+                )
+
     # Rule 3 -- secrets must resolve.
     for path in sorted(on_disk & set(declared)):
         text = (ROOT / path).read_text()
@@ -106,6 +131,9 @@ def main():
         print(f"  {declared[path]:<8} {path}")
     for path in sorted(absent):
         print(f"  {'absent':<8} {path}")
+    for path, jobs in sorted(absent_jobs.items()):
+        for job in sorted(jobs or {}):
+            print(f"  {'absent':<8} {path}  (job: {job})")
     return 0
 
 
