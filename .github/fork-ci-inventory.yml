@@ -1,0 +1,41 @@
+# Fork CI inventory
+#
+# supernova is a fork of quasar-team/quasar and merges upstream regularly, so
+# upstream's workflows arrive here whether or not they make sense in this repo.
+# Some of them are specific to CERN infrastructure that quasarnova does not have
+# -- no CERN GitLab mirror, no self-hosted runner -- and, left alone, they fail
+# on missing secrets and file false alarms into this repo.
+#
+# This file is the declared, reviewable answer to "what CI does supernova run,
+# and why". `.github/workflows/fork_ci_hygiene.yml` enforces it on every push
+# and PR, so an inherited workflow is caught at merge time instead of by a
+# nightly alarm.
+#
+# Dispositions:
+#   ours                  -- written here, has no upstream counterpart
+#   shared                -- inherited from upstream and wanted, runs as-is
+#   upstream-only-guarded -- inherited, NOT applicable here; every job must
+#                            carry an `if: github.repository == ...` guard so
+#                            it self-skips. The guard lives upstream, which
+#                            keeps these files byte-identical to quasar's and
+#                            merge-conflict-free.
+
+# Secrets configured on quasarnova-team/supernova. GITHUB_TOKEN is always
+# provided by Actions. Anything a workflow references that is not listed here
+# cannot resolve, so the workflow can only fail -- that is the tripwire's
+# primary signal.
+available_secrets:
+  - GITHUB_TOKEN
+  - UASDK_DL_TOKEN
+
+workflows:
+  .github/workflows/build-ci-images.yml: shared
+  .github/workflows/ci.yml: shared
+  .github/workflows/clang-tidy.yml: shared
+  .github/workflows/demo.yml: ours
+  .github/workflows/fork_ci_hygiene.yml: ours
+  .github/workflows/pubsub-tests.yml: ours
+  .github/workflows/windows.yml: shared
+  .github/workflows/deploy_documentation.yml: upstream-only-guarded
+  .github/workflows/mirror_staleness.yml: upstream-only-guarded
+  .github/workflows/runner_health_check.yml: upstream-only-guarded

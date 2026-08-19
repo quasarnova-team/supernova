@@ -1,0 +1,38 @@
+name: Fork CI hygiene
+
+# supernova-only: this has no upstream counterpart and is not offered upstream.
+#
+# supernova is a fork of quasar-team/quasar and merges upstream regularly, so
+# upstream's workflows land here whether or not they apply. The ones tied to
+# CERN infrastructure quasarnova does not have (the GitLab mirror, the
+# self-hosted runner) fail on missing secrets and file false alarms into this
+# repo. This makes that visible on the merge that introduces it, once, instead
+# of via a nightly alarm nobody wired up on purpose.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/**'
+      - '.github/fork-ci-inventory.yml'
+      - '.github/fork_ci_hygiene.py'
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/**'
+      - '.github/fork-ci-inventory.yml'
+      - '.github/fork_ci_hygiene.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    name: Check inherited workflows against the inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the inventory
+        run: python3 .github/fork_ci_hygiene.py
