@@ -20,8 +20,9 @@ line demands:
 - **`BaseQuasarServer`** — engine start/stop hooks in the server bootstrap.
 - Documentation, and a CI reworked to run token-free outside CERN. Upstream's
   CERN-only workflows (its GitLab mirror check, its self-hosted runner health
-  check and docs deploy) are inherited but guarded on the repository, so they
-  self-skip here; `.github/fork-ci-inventory.yml` records that and CI enforces it.
+  check and docs deploy) target infrastructure quasarnova does not have and are
+  deleted here; `.github/fork-ci-inventory.yml` records what this repo runs and
+  what it deliberately does not, and CI enforces it.
 
 Five modified code files; everything else supernova adds is a new file next to
 untouched upstream ones. Fork point: upstream `v2.1.1+93` (2026-07-03); relevant
