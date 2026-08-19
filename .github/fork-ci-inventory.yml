@@ -55,3 +55,17 @@ absent:
   .github/workflows/deploy_documentation.yml:
     Builds on that same runner with quasar's credentials (QUASAR_PASS, SMTP_*).
     supernova publishes its documentation by its own means.
+
+absent_jobs:
+  # Individual jobs deleted from workflows we otherwise want. Same reasoning as
+  # `absent:` above, one level down: the workflow is ours to run, but one job in
+  # it targets infrastructure that only exists under quasar-team.
+  #
+  # These live inside files upstream edits often, so an upstream merge can
+  # reintroduce the job quietly as part of a larger, legitimate-looking hunk.
+  # This is what catches that.
+  .github/workflows/ci.yml:
+    uao_demo:
+      Needs ghcr.io/<owner>/quasar-uasdk and <owner>/UaoForQuasar. Both resolve
+      to quasarnova-team here, where neither exists -- we publish quasar-ci:*
+      images and have no UaoForQuasar fork -- so the job dies at container pull.
