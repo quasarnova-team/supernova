@@ -28,6 +28,7 @@ namespace PubSub
 
 using boost::asio::ip::udp;
 using boost::asio::ip::address;
+using boost::asio::ip::make_address;
 
 UdpTransmitter::UdpTransmitter(
     boost::asio::io_context& io,
@@ -36,7 +37,7 @@ UdpTransmitter::UdpTransmitter(
     uint8_t                  ttl,
     bool                     loopback):
     m_socket(io),
-    m_destination(address::from_string(host), port)
+    m_destination(make_address(host), port)
 {
     m_socket.open(udp::v4());
     if (m_destination.address().is_multicast())
@@ -64,7 +65,7 @@ UdpReceiver::UdpReceiver(
     m_buffer(65536),
     m_handler(handler)
 {
-    address listenAddress = address::from_string(host);
+    address listenAddress = make_address(host);
     m_socket.open(udp::v4());
     m_socket.set_option(udp::socket::reuse_address(true));
     if (listenAddress.is_multicast())
